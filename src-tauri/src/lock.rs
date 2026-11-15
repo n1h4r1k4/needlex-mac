@@ -9,7 +9,7 @@
 
 use std::time::{Duration, Instant};
 
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 use crate::{display, mac, AppState};
 
@@ -93,15 +93,20 @@ pub fn hide(app: &AppHandle) {
 
 /// The lock-screen window takes the mouse only over the parts the page
 /// reported as clickable; everywhere else clicks go to the lock screen.
+/// It also tells the page when you start typing or point at the bottom of the
+/// screen, so it can uncover your picture and the password field.
 fn spawn_hits(app: AppHandle) {
     std::thread::spawn(move || {
         let mut ignoring: Option<bool> = None;
+        let mut revealed: Option<bool> = None;
+        let mut reveal_until = Instant::now();
         let mut origin: Option<(f64, f64)> = None;
         let mut origin_at = Instant::now() - Duration::from_secs(10);
         loop {
             std::thread::sleep(Duration::from_millis(40));
             let Some(win) = app.get_webview_window("lock") else {
                 ignoring = None;
+                revealed = None;
                 origin = None;
                 std::thread::sleep(Duration::from_millis(300));
                 continue;
@@ -129,6 +134,20 @@ fn spawn_hits(app: AppHandle) {
             let ignore = !inside;
             if ignoring != Some(ignore) && win.set_ignore_cursor_events(ignore).is_ok() {
                 ignoring = Some(ignore);
+            }
+
+            // typing (the password), or the pointer near the bottom: show the login area
+            let near_login = match (origin, mac::cursor(), win.inner_size(), win.scale_factor()) {
+                (Some((_, wy)), Some((_, py)), Ok(sz), Ok(s)) => py - wy > sz.height as f64 / s * 0.72,
+                _ => false,
+            };
+            if mac::key_idle_secs() < 1.5 || near_login {
+                reveal_until = Instant::now() + Duration::from_secs(if near_login { 2 } else { 12 });
+            }
+            let reveal = Instant::now() < reveal_until;
+            if revealed != Some(reveal) {
+                revealed = Some(reveal);
+                let _ = app.emit_to("lock", "lock:reveal", reveal);
             }
         }
     });

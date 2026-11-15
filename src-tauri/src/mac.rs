@@ -84,6 +84,11 @@ pub fn idle_secs() -> f64 {
     unsafe { CGEventSourceSecondsSinceLastEventType(HID_STATE, ANY_INPUT) }
 }
 
+/// Seconds since a key was last pressed.
+pub fn key_idle_secs() -> f64 {
+    unsafe { CGEventSourceSecondsSinceLastEventType(HID_STATE, 10) } // kCGEventKeyDown
+}
+
 pub fn screen_locked() -> bool {
     unsafe {
         let d = CGSessionCopyCurrentDictionary();

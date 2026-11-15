@@ -495,7 +495,7 @@ const Stars = {
     // where the stars may go: a box in the middle of the screen (under the
     // clock in the full view, between the clock and the password field on
     // the lock screen)
-    const box = LOCK ? [0.2, 0.8, 0.32, 0.64] : WALL ? [0.16, 0.84, 0.24, 0.76] : [0.14, 0.86, 0.32, 0.82];
+    const box = LOCK ? [0.18, 0.82, 0.32, 0.76] : WALL ? [0.16, 0.84, 0.24, 0.76] : [0.14, 0.86, 0.32, 0.82];
     if (sideCover()) { box[0] = 0.46; box[1] = 0.92; }
     const [bx0, bx1, by0, by1] = [box[0] * W, box[1] * W, box[2] * H, box[3] * H];
     let x = W / 2, y = (by0 + by1) / 2;
@@ -620,7 +620,7 @@ const Words = {
   geo() {
     // centred on the desktop; under the clock in full screen and on the lock
     // screen (where the bottom stays clear for the password field)
-    const dy = LOCK ? 0.02 : WALL ? 0 : 0.06;
+    const dy = LOCK ? 0.05 : WALL ? 0 : 0.06;
     return { cx: sideCover() ? 0.66 : 0.5, prev: 0.33 + dy, cur: 0.5 + dy, next: 0.68 + dy, tilt: S.style === 'lens' ? 5 : 1.4 };
   },
   place(e) {
@@ -1020,7 +1020,10 @@ $('#thumb').addEventListener('click', () => setMode('cover'));
 function updateClock() {
   const d = new Date();
   $('#clock .date').textContent = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-  $('#clock .time').textContent = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+  // the lock screen matches the system clock (12 / 24 hours, no AM / PM)
+  $('#clock .time').textContent = LOCK
+    ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(/\s*[ap]\.?\s*m\.?$/i, '')
+    : d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 setInterval(() => { if (S.open) updateClock(); }, 1000);
 
@@ -1206,6 +1209,8 @@ if (WALL) {
   };
   if (LOCK) {
     stage.classList.add('lk-record');
+    // typing the password / pointing at it: uncover the login area for a moment
+    listen('lock:reveal', (e) => document.body.classList.toggle('reveal', !!e.payload));
     setInterval(reportHits, 1000);
     document.addEventListener('click', (e) => {
       if (!S.open || W.hiding || e.target.closest('.card')) return;
@@ -1256,5 +1261,6 @@ if (WALL) {
     if (want !== S.mode && !S.busy && now - W.wantAt > 1200) setMode(want);
   }, 400);
   if (DEMO && DEMO.get('lk')) setTimeout(() => lockState(DEMO.get('lk')), 1500);
+  if (DEMO && DEMO.get('reveal')) document.body.classList.add('reveal');
   invoke('media_resend').catch(() => {});
 }
