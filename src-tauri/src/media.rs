@@ -136,6 +136,7 @@ pub fn spawn(app: AppHandle, rx: Receiver<MediaCmd>) {
             denied: Vec::new(),
             track: Track::default(),
             last_snapshot: Instant::now(),
+            hold: None,
         };
         let debug = std::env::var_os("NEEDLEX_DEBUG").is_some();
         let mut last_debug = String::new();
@@ -151,6 +152,13 @@ pub fn spawn(app: AppHandle, rx: Receiver<MediaCmd>) {
                     }
                     w.last_snapshot = Instant::now();
                     w.sessions = p.sessions;
+                    if let Some((app, want, until)) = w.hold.clone() {
+                        let s = w.sessions.iter_mut().find(|s| s.app == app);
+                        match s {
+                            Some(s) if s.playing != want && Instant::now() < until => s.playing = want,
+                            _ => w.hold = None,
+                        }
+                    }
                     w.set_denied(p.denied);
                     w.update();
                 }
@@ -217,6 +225,9 @@ struct Worker {
     denied: Vec<String>,
     track: Track,
     last_snapshot: Instant,
+    /// after play / pause from NeedleX: (player, wanted state, until) – polls
+    /// taken before the player reacted don't flip the button back
+    hold: Option<(String, bool, Instant)>,
 }
 
 impl Worker {
@@ -243,6 +254,7 @@ impl Worker {
 
     fn exec(&mut self, cmd: MediaCmd) {
         let Some(s) = self.pick() else { return };
+        let toggle = matches!(cmd, MediaCmd::Toggle);
         let target = match s.app.as_str() {
             "spotify" => "Spotify",
             "music" => "Music",
@@ -267,6 +279,19 @@ impl Worker {
                 .stderr(Stdio::null())
                 .status();
         });
+        // show play / pause right away; the poller confirms it a moment later
+        if toggle {
+            let since = self.last_snapshot.elapsed().as_secs_f64() * 1000.0;
+            if let Some(x) = self.sessions.iter_mut().find(|x| x.app == s.app) {
+                if x.playing {
+                    x.position_ms += since;
+                }
+                x.playing = !x.playing;
+                self.hold = Some((x.app.clone(), x.playing, Instant::now() + Duration::from_millis(1500)));
+            }
+            self.last_snapshot = Instant::now();
+            self.update();
+        }
     }
 
     fn update(&mut self) {

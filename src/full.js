@@ -1076,10 +1076,32 @@ let lastT = performance.now();
 let smooth = 0;
 let lastSec = -1;
 
+// Paced instead of running at the display's full rate (up to 120 Hz): the
+// desktop and lock screen draw ~30 fps while music plays and ~10 fps when
+// paused, full screen ~60 fps. (A covered desktop window gets no frames at
+// all: WebKit holds them back until it's visible again.)
+function nextFrame() {
+  const playing = !!S.track && S.play.playing;
+  const gap = WALL ? (playing ? 33 : 100) : 16;
+  S.raf = setTimeout(() => { S.raf = requestAnimationFrame(frame); }, Math.max(0, gap - (performance.now() - lastT) - 4));
+}
+
+// The music level drives only a few things (the glow blob behind the cover, the
+// current star's sparkle). It's set on those elements: set on the whole stage it
+// would make the browser restyle every element on every frame.
+const levelBlob = $('.blob.b1');
+let levelStr = '';
+function setLevelVar(v) {
+  const s = v.toFixed(2);
+  if (s === levelStr) return;
+  levelStr = s;
+  if (S.mode === 'cover') levelBlob.style.setProperty('--level', s);
+  const spark = S.style === 'stars' && S.mode === 'lyrics' ? stage.querySelector('.node.cur .spark') : null;
+  if (spark) spark.style.setProperty('--level', s);
+}
+
 function frame(t) {
   if (!S.open) { S.raf = 0; return; }
-  // as a wallpaper ~30 fps is plenty and easier on the battery
-  if (WALL && t - lastT < 30) { S.raf = requestAnimationFrame(frame); return; }
   const dt = Math.min(100, t - lastT);
   lastT = t;
   const playing = !!S.track && S.play.playing;
@@ -1089,7 +1111,7 @@ function frame(t) {
   let target = playing ? Math.min(1, Math.sqrt(S.level) * 1.1) : 0;
   if (playing && !S.gotLevel) target = 0.45 + 0.2 * Math.sin(t / 190);
   smooth += (target - smooth) * (target > smooth ? 0.5 : 0.15);
-  stage.style.setProperty('--level', smooth.toFixed(3));
+  setLevelVar(smooth);
 
   // beat detection → occasional glitch stripes (like the reel)
   S.slowLevel += (smooth - S.slowLevel) * 0.04;
@@ -1149,7 +1171,7 @@ function frame(t) {
     }
   }
 
-  S.raf = requestAnimationFrame(frame);
+  nextFrame();
 }
 
 // ------------------------------------------------------------ wiring

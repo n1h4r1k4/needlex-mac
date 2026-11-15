@@ -289,7 +289,9 @@ window.FlowBG = (() => {
   function resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     let w = innerWidth * dpr, h = innerHeight * dpr;
-    const max = 2.6e6; // keep big / Retina screens smooth (and the battery happy)
+    // keep big / Retina screens smooth (and the battery happy); the desktop and
+    // lock screen run all day, and the liquid is soft, so they use fewer pixels
+    const max = document.body.classList.contains('wall') ? 1.6e6 : 2.6e6;
     if (w * h > max) { const k = Math.sqrt(max / (w * h)); w *= k; h *= k; }
     canvas.width = Math.max(2, w | 0);
     canvas.height = Math.max(2, h | 0);

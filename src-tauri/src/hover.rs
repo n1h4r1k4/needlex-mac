@@ -25,8 +25,10 @@ pub fn spawn(app: AppHandle) {
         let mut ignoring: Option<bool> = None;
         let mut geo: Option<(f64, f64)> = None; // logical window origin
         let mut geo_at = Instant::now() - Duration::from_secs(10);
+        // checked every 30 ms near the island, every 120 ms when the pointer is far away
+        let mut far = false;
         loop {
-            std::thread::sleep(Duration::from_millis(30));
+            std::thread::sleep(Duration::from_millis(if far { 120 } else { 30 }));
             let Some(win) = app.get_webview_window("main") else { continue };
 
             let state = app.state::<AppState>();
@@ -65,6 +67,7 @@ pub fn spawn(app: AppHandle) {
                     && py >= y0 - 2.0 // include the very top pixel row of the screen
                     && py <= y0 + r.h * zoom;
 
+            far = !now_inside && (py > y0 + r.h * zoom + 160.0 || px < x0 - 220.0 || px > x0 + r.w * zoom + 220.0);
             let ignore = !now_inside;
             if ignoring != Some(ignore) && win.set_ignore_cursor_events(ignore).is_ok() {
                 ignoring = Some(ignore);
@@ -97,6 +100,10 @@ pub fn spawn_wall(app: AppHandle) {
             };
             let state = app.state::<AppState>();
             let objects = crate::wall_is_object(&state.settings.lock().unwrap().wallpaper);
+            if !objects {
+                // lyrics on the desktop never take the mouse: just make sure now and then
+                std::thread::sleep(Duration::from_millis(460));
+            }
             let r = *state.wall_hit.lock().unwrap();
             let ignore = if !objects || r.w <= 0.0 {
                 true
@@ -122,7 +129,7 @@ pub fn spawn_wall(app: AppHandle) {
             };
             // re-applied now and then: a new or reloaded window starts out taking the mouse
             n = n.wrapping_add(1);
-            if (ignoring != Some(ignore) || n % 25 == 0) && win.set_ignore_cursor_events(ignore).is_ok() {
+            if (ignoring != Some(ignore) || n % 25 == 0 || !objects) && win.set_ignore_cursor_events(ignore).is_ok() {
                 ignoring = Some(ignore);
             }
         }

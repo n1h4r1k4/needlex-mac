@@ -201,6 +201,7 @@ function computeView() {
 }
 
 function render() {
+  wake();
   const v = computeView();
   const prevView = S.view;
   S.view = v;
@@ -459,6 +460,7 @@ function seek(ms) {
   S.play = { ...S.play, positionMs: ms };
   S.playAt = performance.now();
   S.seekUntil = performance.now() + 1500;
+  wake();
   if (!S.play.hasTimeline) S.localPos = ms;
   S.lyrIdx = -2;
 }
@@ -499,6 +501,7 @@ scrub.addEventListener('pointerdown', (e) => {
   if (!(S.play.canSeek && S.play.hasTimeline)) return;
   S.scrubbing = true;
   S.scrubPct = scrubPct(e);
+  wake();
   scrub.classList.add('dragging');
   scrub.setPointerCapture(e.pointerId);
 });
@@ -617,6 +620,20 @@ let smooth = 0;
 let lastSec = -1;
 let lastDurText = '';
 
+// The loop runs only while something moves (music playing, bars settling, the
+// island springing open / closed, scrubbing) and sleeps otherwise; wake() starts
+// it again. The small views draw at ~30 fps, the open island at ~60 fps.
+let loopId = 0;
+let busyUntil = 0;
+function wake() {
+  busyUntil = performance.now() + 1200; // covers the island's spring animations
+  if (!loopId) loopId = requestAnimationFrame(frame);
+}
+function nextFrame() {
+  const gap = S.view === 'expanded' || S.view === 'lyrics' ? 16 : 33;
+  loopId = setTimeout(() => { loopId = requestAnimationFrame(frame); }, Math.max(0, gap - (performance.now() - lastT) - 4));
+}
+
 function frame(t) {
   const dt = Math.min(100, t - lastT);
   lastT = t;
@@ -669,7 +686,8 @@ function frame(t) {
     }
   }
 
-  requestAnimationFrame(frame);
+  if (playing || smooth > 0.002 || S.scrubbing || S.drag || t < busyUntil) nextFrame();
+  else loopId = 0;
 }
 
 // ------------------------------------------------------------ pages: player / weather / calendar
@@ -872,9 +890,9 @@ function applySettings(s) {
   render();
 }
 
-listen('media:track', (e) => setTrack(e.payload));
-listen('media:state', (e) => onState(e.payload));
-listen('audio:level', (e) => { S.level = Math.max(S.level * 0.6, e.payload); S.lastLevelAt = performance.now(); S.gotLevel = true; });
+listen('media:track', (e) => { setTrack(e.payload); wake(); });
+listen('media:state', (e) => { onState(e.payload); wake(); });
+listen('audio:level', (e) => { S.level = Math.max(S.level * 0.6, e.payload); S.lastLevelAt = performance.now(); S.gotLevel = true; if (!loopId) wake(); });
 listen('settings', (e) => applySettings(e.payload));
 listen('island:hover', (e) => {
   clearTimeout(S.hoverT);
@@ -898,4 +916,3 @@ $$('.art-img').forEach((i) => { i.src = PLACEHOLDER; });
 invoke('get_settings').then(applySettings).catch(() => render());
 invoke('media_resend');
 render();
-requestAnimationFrame(frame);

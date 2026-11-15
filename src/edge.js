@@ -13,8 +13,11 @@ window.EdgeLight = (() => {
   const N = 6; // moving light sections (2 circling + up to 4 comets)
   const VS = `#version 300 es
   in vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }`;
+  // the light fades out within BAND css px of the edge: only that border is drawn
+  const BAND = 100;
   const FS = `#version 300 es
   precision highp float;
+  #define BAND ${BAND.toFixed(1)}
   out vec4 o;
   uniform vec2 uRes;
   uniform float uDpr, uRadius, uLevel, uBase;
@@ -59,7 +62,7 @@ window.EdgeLight = (() => {
     vec2 c = clamp(q, vec2(R), vec2(W - R, H - R));
     if (length(q - c) > R) { o = vec4(0.0); return; }   // outside the rounded corners
     float x = q.x, yT = H - q.y;
-    if (min(min(x, W - x), min(yT, H - yT)) > 120.0 * uDpr) { o = vec4(0.0); return; }
+    if (min(min(x, W - x), min(yT, H - yT)) > BAND * uDpr) { o = vec4(0.0); return; }
 
     // perimeter runs clockwise from the top-left corner; every edge lights the
     // pixel on its own, so corners blend smoothly
@@ -168,6 +171,7 @@ window.EdgeLight = (() => {
     gl.useProgram(prog);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
+    const W = canvas.width, H = canvas.height, b = Math.min(Math.ceil(BAND * (W / innerWidth)), W >> 1, H >> 1);
     gl.uniform2f(U.uRes, canvas.width, canvas.height);
     gl.uniform1f(U.uDpr, canvas.width / innerWidth);
     gl.uniform1f(U.uRadius, 12);
@@ -177,7 +181,13 @@ window.EdgeLight = (() => {
     gl.uniform1f(U.uPalN, palette.length);
     gl.uniform1f(U.uShift, shift);
     gl.uniform3fv(U.uSeg, seg);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    // four strips along the edges instead of the whole screen (~60 % fewer pixels)
+    gl.enable(gl.SCISSOR_TEST);
+    for (const [x, y, w, h] of [[0, H - b, W, b], [0, 0, W, b], [0, b, b, H - 2 * b], [W - b, b, b, H - 2 * b]]) {
+      gl.scissor(x, y, w, h);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+    gl.disable(gl.SCISSOR_TEST);
   }
 
   resize();
