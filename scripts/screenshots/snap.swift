@@ -1,12 +1,13 @@
 // Renders one of NeedleX's pages (in its browser demo mode) to a PNG.
-// usage: snap <file.html> <query> <out.png> <width> <height> <delay seconds>
-// The view is drawn at 2x. JavaScript errors on the page are printed.
+// usage: snap <file.html> <query> <out.png> <width> <height> <delay seconds> [script.js]
+// The view is drawn at 2x. JavaScript errors on the page are printed. The
+// optional script runs before the page's own (e.g. a song for the demo).
 import AppKit
 import WebKit
 
 let a = CommandLine.arguments
-guard a.count == 7, let w = Double(a[4]), let h = Double(a[5]), let delay = Double(a[6]) else {
-    print("usage: snap <file.html> <query> <out.png> <width> <height> <delay>")
+guard a.count == 7 || a.count == 8, let w = Double(a[4]), let h = Double(a[5]), let delay = Double(a[6]) else {
+    print("usage: snap <file.html> <query> <out.png> <width> <height> <delay> [script.js]")
     exit(2)
 }
 var comps = URLComponents(url: URL(fileURLWithPath: a[1]), resolvingAgainstBaseURL: false)!
@@ -21,6 +22,9 @@ cfg.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
 cfg.userContentController.addUserScript(WKUserScript(
     source: "window.__errs=[];addEventListener('error',e=>__errs.push(e.message+' @'+e.lineno));addEventListener('unhandledrejection',e=>__errs.push('rejected: '+e.reason))",
     injectionTime: .atDocumentStart, forMainFrameOnly: true))
+if a.count == 8, let extra = try? String(contentsOfFile: a[7], encoding: .utf8) {
+    cfg.userContentController.addUserScript(WKUserScript(source: extra, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+}
 let wv = WKWebView(frame: NSRect(x: 0, y: 0, width: w, height: h), configuration: cfg)
 // the window is off screen: keep WebKit animating anyway (private, development only)
 let occlusion = Selector(("_setWindowOcclusionDetectionEnabled:"))

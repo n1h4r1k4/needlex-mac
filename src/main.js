@@ -21,7 +21,7 @@ function islandDemo(q) {
   setTimeout(() => {
     h['settings']?.({ payload: { floating: false, hideIdle: true, glow: true } });
     h['media:track']?.({ payload: { key: DemoSong.key, title: DemoSong.title, artist: DemoSong.artist, album: DemoSong.album, art, source: 'demo', sourceName: 'Spotify' } });
-    h['media:state']?.({ payload: { active: true, playing: true, positionMs: 61000, durationMs: 321000, hasTimeline: true, canNext: true, canPrev: true, canSeek: true } });
+    h['media:state']?.({ payload: { active: true, playing: true, positionMs: Number(q.get('t') || 61000), durationMs: DemoSong.durationMs || 321000, hasTimeline: true, canNext: true, canPrev: true, canSeek: true } });
     const v = q.get('view') || 'expanded';
     setTimeout(() => {
       if (v === 'lyrics') { S.lyricsOpen = true; }

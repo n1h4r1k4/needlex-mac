@@ -67,3 +67,6 @@ const DemoSong = {
     return c.toDataURL('image/jpeg', 0.92);
   },
 };
+
+// The screenshot script can swap in another song (scripts/screenshots.sh).
+if (window.DemoSongOverride) Object.assign(DemoSong, window.DemoSongOverride);

@@ -41,7 +41,7 @@ function demoBridge(q) {
   setTimeout(() => {
     const t0 = Number(q.get('t') || 6000);
     handlers['media:track']?.({ payload: { key: DemoSong.key, title: DemoSong.title, artist: DemoSong.artist, album: DemoSong.album, art: q.get('art') || DemoSong.art(), source: 'demo', sourceName: 'Demo' } });
-    handlers['media:state']?.({ payload: { active: true, playing: true, positionMs: t0, durationMs: 200000, hasTimeline: true, canNext: true, canPrev: true, canSeek: true } });
+    handlers['media:state']?.({ payload: { active: true, playing: true, positionMs: t0, durationMs: DemoSong.durationMs || 200000, hasTimeline: true, canNext: true, canPrev: true, canSeek: true } });
     handlers['full:open']?.({});
     if (q.get('style')) setStyle(q.get('style'));
     if (q.get('glitter')) applySettings({ glitter: q.get('glitter') });

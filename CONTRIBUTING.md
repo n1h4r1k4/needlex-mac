@@ -47,8 +47,10 @@ example `open "src/full.html?mode=lyrics&style=stars"`.
 | `full.html` (full screen / desktop / lock screen) | `mode=lyrics`, `style=words\|lens\|stars\|terminal\|aura\|lines`, `bg=simple\|glass\|liquid\|foggy`, `cover=1`, `wall`, `lock`, `lk=record\|cover\|lyrics`, `t=<ms>` (song position), `nolyr=1`, `glitter=white\|multi\|album`, `snap=1` (skip transitions) |
 | `desk.html` (desktop objects) | `look=turntable\|sleeve\|aura`, `paused` |
 
-The README screenshots are made from these pages. To regenerate them, run
-`./scripts/screenshots.sh`.
+The README screenshots are made from these pages with `./scripts/screenshots.sh`. On its own,
+the script uses the demo song. To use real songs, first make a song file for each one with
+`scripts/screenshots/song.py`, which takes a cover URL and an LRCLIB id. Then pass the files as
+`SONG_A=a.js SONG_B=b.js ./scripts/screenshots.sh`. Keep those song files out of the repository.
 
 ## Code style
 

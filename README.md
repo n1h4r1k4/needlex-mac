@@ -20,9 +20,9 @@ player on your lock screen.
 
 </div>
 
-> The screenshots use a made-up demo song ("City Lights" by *NeedleX Demo*) with an original
-> cover and lyrics. Every page can be opened in a browser to see this demo
-> (see [CONTRIBUTING.md](CONTRIBUTING.md#previewing-the-ui-in-a-browser)).
+> The screenshots show *Blinding Lights* by The Weeknd and *Nanchaku* by Seedhe Maut & MC Stan.
+> Their covers and lyrics belong to their owners. Opened in a browser, every page plays a
+> made-up demo song instead (see [CONTRIBUTING.md](CONTRIBUTING.md#previewing-the-ui-in-a-browser)).
 
 ## Contents
 
