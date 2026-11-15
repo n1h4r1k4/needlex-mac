@@ -1,12 +1,12 @@
 # NeedleX — a dynamic-island music player (macOS port)
 
-> This is the **macOS** branch of NeedleX. The UI is unchanged; the Windows-only
-> parts (SMTC, WASAPI meter, Win32 windows, GDI capture) were replaced with
-> macOS equivalents. See [macOS notes](#macos-notes) below.
+> NeedleX for **macOS**: a desktop wallpaper, a lock-screen player, Needle-style
+> lyric effects and weather / calendar pages in the island.
+> See [macOS notes](#macos-notes) below.
 
-A black "notch" at the top of the screen that follows whatever is playing:
-Spotify, Apple Music, and any browser tab (YouTube Music, Spotify Web,
-SoundCloud, YouTube…) in Chrome, Edge, Brave, Firefox and Opera.
+A black "notch" at the top of the screen that follows whatever is playing in
+Spotify or Apple Music (on macOS other apps' "now playing" isn't open to
+third-party apps, so browser tabs aren't followed).
 
 - **Auto-detection** through Windows' media sessions (SMTC): title, artist, album, cover art, position, controls
 - **Compact pill** with cover, title and a visualizer driven by the real audio level
