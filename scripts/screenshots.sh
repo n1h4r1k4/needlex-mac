@@ -20,6 +20,7 @@ mkdir -p "$OUT"
 echo "building the snapshot tools…"
 xcrun swiftc -O "$ROOT/scripts/screenshots/snap.swift" -o "$TMP/snap"
 xcrun swiftc -O "$ROOT/scripts/screenshots/crop.swift" -o "$TMP/crop"
+xcrun swiftc -O "$ROOT/scripts/screenshots/grid.swift" -o "$TMP/grid"
 
 song() { if [ "$1" = a ]; then echo "${SONG_A:-}"; else echo "${SONG_B:-}"; fi; }
 # page, query, name, width, height, delay (s), song (a | b)
@@ -67,6 +68,11 @@ full "lock=1&lk=record" lock-record a 5
 full "lock=1&lk=cover" lock-cover b 5
 full "lock=1&lk=lyrics&style=stars&t=58000" lock-lyrics a 7
 full "wall=1&mode=lyrics&style=words&t=62000" wall-words b 7
+# the four lock screen clock styles in one picture
+for c in system serif thin mono; do shot full.html "snap=1&lock=1&lk=cover&clock=$c" "clock-$c" 1440 900 5 a; done
+"$TMP/grid" "$TMP/lock-clocks.jpg" 2 "$TMP/clock-system.png" "$TMP/clock-serif.png" "$TMP/clock-thin.png" "$TMP/clock-mono.png"
+sips -Z 1440 "$TMP/lock-clocks.jpg" --out "$OUT/lock-clocks.jpg" >/dev/null
+echo "  lock-clocks.jpg"
 desk turntable a
 desk sleeve b
 desk aura a

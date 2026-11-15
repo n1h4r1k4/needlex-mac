@@ -566,6 +566,23 @@ body.lock #clock .time {
   background: none; color: rgba(226, 223, 240, .8); -webkit-text-stroke: 0; filter: none;
   font-variation-settings: normal;
 }
+/* other clock styles (tray → Desktop wallpaper → Lock screen clock) */
+body.lock.clock-serif #clock { font-family: "Clock Serif", "Georgia", serif; }
+body.lock.clock-serif #clock .date { font-size: 2.3vh; font-weight: 600; letter-spacing: .01em; color: rgba(255,255,255,.8); font-variation-settings: "opsz" 24; }
+body.lock.clock-serif #clock .time {
+  font-size: 13vh; line-height: 1.02; font-weight: 500; letter-spacing: -.015em;
+  font-variation-settings: "opsz" 72; font-variant-numeric: lining-nums;
+  background: linear-gradient(180deg, #ffffff 0%, #f3eff3 45%, #c9c3cc 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 .35vh .9vh rgba(0,0,0,.28));
+  -webkit-text-stroke: .06vh rgba(255,255,255,.35);
+}
+body.lock.clock-thin #clock { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
+body.lock.clock-thin #clock .date { font-weight: 500; letter-spacing: .04em; }
+body.lock.clock-thin #clock .time { font-size: 15vh; font-weight: 100; letter-spacing: -.01em; color: rgba(240, 238, 248, .9); }
+body.lock.clock-mono #clock { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+body.lock.clock-mono #clock .date { font-size: 2.3vh; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
+body.lock.clock-mono #clock .time { font-size: 12vh; font-weight: 600; letter-spacing: -.04em; color: rgba(232, 230, 244, .86); }
 body.lock #cover { top: 28vh; }
 /* the player card is dark glass tinted with the cover, readable on any lock screen */
 body.lock .card {

@@ -2,6 +2,12 @@
 
 Notable changes to NeedleX for macOS. Dates are in YYYY-MM-DD format.
 
+## Unreleased
+
+- **Lock screen clock styles:** System (rounded), Serif, Thin or Monospace (tray → Desktop
+  wallpaper → Lock screen clock).
+- **‹ › arrows** on the sides of the open island to step between Player, Weather and Calendar.
+
 ## 0.1.0 – 2026-11-15
 
 The first macOS release: one download for Apple silicon and Intel Macs (macOS 13+).

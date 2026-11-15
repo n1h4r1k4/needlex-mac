@@ -45,6 +45,7 @@ function demoBridge(q) {
     handlers['full:open']?.({});
     if (q.get('style')) setStyle(q.get('style'));
     if (q.get('glitter')) applySettings({ glitter: q.get('glitter') });
+    if (q.get('clock')) applySettings({ lockClock: q.get('clock') });
     if (q.get('bg') || q.get('cover')) applySettings({ lyricStyle: q.get('style') || 'words', lyricBg: q.get('bg') || 'simple', lyricCover: q.get('cover') === '1' });
     if (q.get('mode') === 'lyrics') setTimeout(() => setMode('lyrics'), 1300);
   }, 100);
@@ -1195,7 +1196,11 @@ function applySettings(s) {
   if (look !== S.look) { S.look = look; setStyle(S.settings.lyricStyle || S.style); }
   if (window.Glitter) Glitter.setMode(S.settings.glitter || 'off');
   document.body.classList.toggle('no-glow', !S.settings.glow);
+  // lock screen clock style (tray → Desktop wallpaper → Lock screen clock)
+  const clock = CLOCKS.includes(S.settings.lockClock) ? S.settings.lockClock : 'system';
+  for (const k of CLOCKS) document.body.classList.toggle(`clock-${k}`, k === clock);
 }
+const CLOCKS = ['system', 'serif', 'thin', 'mono'];
 invoke('get_settings').then(applySettings).catch(() => {});
 listen('settings', (e) => applySettings(e.payload));
 

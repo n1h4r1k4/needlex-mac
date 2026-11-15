@@ -58,6 +58,14 @@ const LYRIC_BG_CHOICES: [(&str, &str); 4] = [
     ("foggy", "Foggy"),
 ];
 
+/// The lock screen's clock (when NeedleX shows the cover or the lyrics there).
+const LOCK_CLOCK_CHOICES: [(&str, &str); 4] = [
+    ("system", "System (rounded)"),
+    ("serif", "Serif"),
+    ("thin", "Thin"),
+    ("mono", "Monospace"),
+];
+
 /// The looks that sit on your own wallpaper as an object you can drag around.
 pub fn wall_is_object(look: &str) -> bool {
     matches!(look, "turntable" | "sleeve" | "aura")
@@ -107,6 +115,8 @@ pub struct Settings {
     pub lyric_cover: bool,
     /// The now-playing view on the lock screen too (with the clock).
     pub lock_screen: bool,
+    /// Lock screen clock style: "system" | "serif" | "thin" | "mono".
+    pub lock_clock: String,
 }
 
 impl Default for Settings {
@@ -127,6 +137,7 @@ impl Default for Settings {
             lyric_bg: "simple".into(),
             lyric_cover: false,
             lock_screen: true,
+            lock_clock: "system".into(),
         }
     }
 }
@@ -519,7 +530,14 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         }
         items.push(it);
     }
-    let wall_menu = wall_menu.separator().item(&lockscreen).build()?;
+    let mut clock_menu = SubmenuBuilder::new(app, "Lock screen clock");
+    for (id, label) in LOCK_CLOCK_CHOICES {
+        let it = check(&format!("lockclock_{id}"), label, s.lock_clock == id)?;
+        clock_menu = clock_menu.item(&it);
+        items.push(it);
+    }
+    let clock_menu = clock_menu.build()?;
+    let wall_menu = wall_menu.separator().item(&lockscreen).item(&clock_menu).build()?;
 
     // lyrics effect (desktop, lock screen, full screen)
     let mut lyr_menu = SubmenuBuilder::new(app, "Lyrics effect");
@@ -659,6 +677,16 @@ fn on_menu(app: &AppHandle, id: &str) {
         }
         other if other.starts_with("lyr_") => {
             apply_lyric_style(app, other["lyr_".len()..].to_string());
+        }
+        other if other.starts_with("lockclock_") => {
+            let style = other["lockclock_".len()..].to_string();
+            update_setting(app, |s| s.lock_clock = style.clone());
+            let items = state.tray_items.lock().unwrap();
+            for (id, _) in LOCK_CLOCK_CHOICES {
+                if let Some(i) = items.get(&format!("lockclock_{id}")) {
+                    let _ = i.set_checked(id == style);
+                }
+            }
         }
         other if other.starts_with("lyrbg_") => {
             let bg = other["lyrbg_".len()..].to_string();

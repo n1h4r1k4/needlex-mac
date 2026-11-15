@@ -141,6 +141,12 @@ NeedleX fades away.
   </tr>
 </table>
 
+**Clock style** (tray → *Desktop wallpaper* → *Lock screen clock*): *System* (rounded, like macOS),
+*Serif* (like the full-screen clock), *Thin* or *Monospace*. NeedleX's clock shows with the cover and
+the lyrics. With the record, your own lock screen and its clock show through.
+
+<img src="docs/images/lock-clocks.jpg" width="720" alt="The four lock screen clock styles: System, Serif, Thin and Monospace" />
+
 ### Full screen
 
 Click the cover in the open island, or let NeedleX open by itself after a few idle minutes (tray →
@@ -228,7 +234,7 @@ Everything is in the tray menu:
 | Full screen when idle | Off / 1 / 3 / 5 / 10 / 15 minutes |
 | Show notch on | Choose which display shows the island |
 | Glitter (full screen) | Off / White / Multicolour / Album colours |
-| Desktop wallpaper | Off / Lyrics / Turntable / Record sleeve / Cover with aura, and *Also on the lock screen* |
+| Desktop wallpaper | Off / Lyrics / Turntable / Record sleeve / Cover with aura, *Also on the lock screen* and *Lock screen clock* (System / Serif / Thin / Monospace) |
 | Lyrics effect | Pick the effect, its *Background* and *Show album cover* |
 | Open full screen · Re-center notch · Launch at login · Quit | |
 
