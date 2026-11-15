@@ -41,11 +41,20 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           VERSION="${TAG#v}"
-          # this version's part of the changelog, then how to install
-          awk -v v="$VERSION" '$0 ~ "^## " v "( |$)" {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
-          cat .github/release-install.md >> notes.md
+          # docs/releases/<tag>.md if there is one (title on its own first
+          # line as "<!-- title: … -->"), else this version's part of the
+          # changelog followed by how to install
+          TITLE="NeedleX $VERSION"
+          if [ -f "docs/releases/$TAG.md" ]; then
+            cp "docs/releases/$TAG.md" notes.md
+            T="$(sed -n '1s/^<!-- title: \(.*\) -->$/\1/p' notes.md)"
+            [ -n "$T" ] && TITLE="$T"
+          else
+            awk -v v="$VERSION" '$0 ~ "^## " v "( |$)" {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
+            cat .github/release-install.md >> notes.md
+          fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber
           else
-            gh release create "$TAG" dist/* --title "NeedleX $VERSION" --notes-file notes.md
+            gh release create "$TAG" dist/* --title "$TITLE" --notes-file notes.md
           fi

@@ -91,3 +91,14 @@ open --env NEEDLEX_DEBUG=1 --stderr /tmp/needlex.log /Applications/NeedleX.app
 | `NEEDLEX_DEBUG_DEMO=1` | Walks through the expanded and full-screen views once |
 | `NEEDLEX_DEBUG_LOCK=<seconds>` | Shows the lock-screen view for a few seconds without locking |
 | `NEEDLEX_DEBUG_WEATHER=1` | Looks up the weather at start and logs the result |
+
+## Releasing (maintainers)
+
+1. Bump the version in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `package.json`.
+2. Add the version to `CHANGELOG.md`. You can also write full release notes in
+   `docs/releases/v<version>.md`, with the title on the first line as `<!-- title: … -->`.
+3. Commit, then tag and push: `git tag -a v<version> -m "NeedleX <version>" && git push origin v<version>`.
+
+The *Release* workflow builds the app for Apple silicon and Intel (`scripts/release.sh`) and
+publishes the disk image, the zip and their checksums as a GitHub release. To build the same files
+locally, run `./scripts/release.sh`; they end up in `dist/`.
