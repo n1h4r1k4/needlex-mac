@@ -211,11 +211,16 @@ pub fn set_wall_level(ns_window: *mut c_void, above_icons: bool) {
 
 // ---------------------------------------------------------------- lock screen
 //
-// The lock screen covers every normal window. A window in a SkyLight space of
-// its own, with a high absolute level, is still drawn on top of it (that's how
-// lock-screen music players do it). SkyLight is a private framework, so it is
+// The lock screen covers every normal window, whatever its level: it lives in
+// a space of its own (SkyLight absolute level 300). A window in a space at the
+// level macOS uses for Notification Center on the lock screen (400), marked as
+// allowed to show without a login, is drawn on top of it – that's how
+// lock-screen music players do it. SkyLight is a private framework, so it is
 // looked up at run time; if anything is missing the lock screen just stays as
 // macOS draws it.
+
+/// kSLSSpaceAbsoluteLevelNotificationCenterAtScreenLock (the lock screen is 300).
+const SPACE_LEVEL_ABOVE_LOCK_SCREEN: i32 = 400;
 
 struct SkyLight {
     cid: i32,
@@ -245,7 +250,7 @@ fn skylight() -> Option<&'static SkyLight> {
         if space == 0 {
             return None;
         }
-        set_level(cid, space, 100);
+        set_level(cid, space, SPACE_LEVEL_ABOVE_LOCK_SCREEN);
         let n: *mut AnyObject = msg_send![class!(NSNumber), numberWithUnsignedLongLong: space];
         let list: *mut AnyObject = msg_send![class!(NSArray), arrayWithObject: n];
         show_spaces(cid, list);
@@ -267,10 +272,12 @@ pub fn setup_lock_window(ns_window: *mut c_void) -> bool {
     }
     let w = ns_window as *mut AnyObject;
     unsafe {
-        // macOS draws the lock screen at window levels 2001–2004: go just above
+        // above loginwindow's own windows (levels 2001–2004)
         let _: () = msg_send![w, setLevel: LOCK_LEVEL];
         let _: () = msg_send![w, setHasShadow: false];
         let _: () = msg_send![w, setIgnoresMouseEvents: true];
+        // allowed to be on screen while the Mac is locked
+        let _: () = msg_send![w, setCanBecomeVisibleWithoutLogin: true];
         // clicks on the record / cover / player must not activate NeedleX
         // (the password field has to keep the keyboard)
         let prevents = sel!(_setPreventsActivation:);
@@ -278,15 +285,20 @@ pub fn setup_lock_window(ns_window: *mut c_void) -> bool {
         if responds {
             let _: () = msg_send![w, _setPreventsActivation: true];
         }
-        let _: () = msg_send![w, orderFrontRegardless];
         let Some(sky) = skylight() else { return false };
-        let num: isize = msg_send![w, windowNumber];
-        if num <= 0 {
-            return false;
-        }
-        let n: *mut AnyObject = msg_send![class!(NSNumber), numberWithInt: num as i32];
-        let list: *mut AnyObject = msg_send![class!(NSArray), arrayWithObject: n];
-        let r = (sky.add_windows)(sky.cid, sky.space, list, 7);
+        // into the space above the lock screen first, then on screen
+        let add = |w: *mut AnyObject| -> Option<(isize, i32)> {
+            let num: isize = msg_send![w, windowNumber];
+            if num <= 0 {
+                return None;
+            }
+            let n: *mut AnyObject = msg_send![class!(NSNumber), numberWithInt: num as i32];
+            let list: *mut AnyObject = msg_send![class!(NSArray), arrayWithObject: n];
+            Some((num, (sky.add_windows)(sky.cid, sky.space, list, 7)))
+        };
+        add(w);
+        let _: () = msg_send![w, orderFrontRegardless];
+        let Some((num, r)) = add(w) else { return false };
         if crate::debug() {
             eprintln!("[lock] SkyLight space {} (connection {}): added window {num} -> {r}", sky.space, sky.cid);
         }

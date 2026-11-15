@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "scripts": {
     "dev": "tauri dev",
-    "build": "tauri build",
+    "build": "tauri build && ./scripts/sign-local.sh",
     "tauri": "tauri"
   },
   "devDependencies": {
