@@ -10,6 +10,16 @@ const LABEL = (() => {
   return q.has('lock') ? 'lock' : q.has('wall') ? 'wall' : 'full';
 })();
 const LOCK = LABEL === 'lock';
+// NEEDLEX_DEBUG: page errors and a little state go to NeedleX's log
+if (!DEMO) {
+  addEventListener('error', (e) => invoke('debug_log', { msg: `error: ${e.message} @${e.lineno}:${e.colno}` }).catch(() => {}));
+  addEventListener('unhandledrejection', (e) => invoke('debug_log', { msg: `rejection: ${e.reason}` }).catch(() => {}));
+  setInterval(() => {
+    try {
+      invoke('debug_log', { msg: `open=${S.open} mode=${S.mode} style=${S.style} classes=${stage.className} lines=${S.lines.length} lyrics=${S.lyricsLoading ? 'loading' : S.lyricsRes ? (S.lyricsRes.found ? 'found' : 'none') : '-'} track=${S.track ? S.track.title : '-'} playing=${S.play.playing} flow=${!!window.FlowBG} edge=${!!window.EdgeLight}` }).catch(() => {});
+    } catch (err) { invoke('debug_log', { msg: 'state error ' + err }).catch(() => {}); }
+  }, 10000);
+}
 const WALL = LABEL === 'wall' || LOCK;
 
 // Lets the page be previewed in a normal browser: full.html?mode=lyrics&style=stars&t=9000
@@ -43,7 +53,7 @@ function demoBridge(q) {
     if (q.get('mode') === 'lyrics') setTimeout(() => setMode('lyrics'), 1300);
   }, 100);
   return {
-    invoke: async (cmd) => (cmd === 'fetch_lyrics' ? lyrics : null),
+    invoke: async (cmd) => (cmd === 'fetch_lyrics' ? (q.get('nolyr') ? { found: false, instrumental: false, plain: null, synced: [] } : lyrics) : null),
     listen: (ev, fn) => { const prev = handlers[ev]; handlers[ev] = prev ? (e) => { prev(e); fn(e); } : fn; },
   };
 }
@@ -420,6 +430,22 @@ function buildLines(synced) {
   });
 }
 
+// Without synced lyrics the effects still need words: plain lyrics are spread
+// evenly over the song; with none at all (instrumentals, songs no one has
+// transcribed) the title and the artist take turns.
+function fallbackLines(t, res) {
+  const dur = S.play.hasTimeline && S.play.durationMs > 0 ? S.play.durationMs : 240000;
+  const plain = res && res.plain ? res.plain.split('\n').map((l) => l.trim()).filter(Boolean) : [];
+  if (plain.length) {
+    const step = Math.max(2500, (dur - 8000) / plain.length);
+    return plain.map((text, i) => ({ time: 4000 + i * step, text }));
+  }
+  const words = [t.title, t.artist].filter(Boolean);
+  const out = [];
+  for (let at = 1500, i = 0; words.length && at < dur; at += 7000, i++) out.push({ time: at, text: words[i % words.length] });
+  return out;
+}
+
 function resetLyrics() {
   S.lines = [];
   S.lyricsRes = null;
@@ -440,9 +466,10 @@ async function loadLyrics(t, attempt) {
     });
     if (!S.track || S.track.key !== t.key) return;
     S.lyricsRes = res;
-    S.lines = buildLines(res.synced || []);
+    S.lines = buildLines(res.synced && res.synced.length ? res.synced : fallbackLines(t, res));
   } catch {
     if (attempt < 2) { S.lyrT = setTimeout(() => loadLyrics(t, attempt + 1), 4000); return; }
+    S.lines = buildLines(fallbackLines(t, null));
   }
   S.lyricsLoading = false;
   S.li = S.wi = -2;
