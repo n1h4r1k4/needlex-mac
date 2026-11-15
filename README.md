@@ -37,6 +37,9 @@ third-party apps, so browser tabs aren't followed).
   *Lens* (black, the next word waiting in a label), *Stars* (one constellation at a time, centred),
   *Terminal* (typed in monospace with a red cursor), *Aura* (the cover's colours blurred),
   *Scrolling lines* (the whole song next to the cover)
+  - *Background* (same menu): *Simple* (each effect's own look), *Glass* (the cover behind frosted
+    glass), *Liquid* (the cover flowing), *Foggy* (the cover in drifting mist)
+  - *Show album cover*: the cover and the player card stay on the left, the lyrics on the right
 - **Desktop wallpaper** (tray → *Desktop wallpaper*), behind all your windows, on every Space:
   - *Lyrics*: while music plays the desktop shows the lyrics in the chosen effect (the cover while
     paused); your own wallpaper comes back half a minute after the music stops. Desktop icons stay on top
@@ -69,6 +72,9 @@ The build also compiles the small Swift companion `src-tauri/helper/helper.swift
   (*Privacy & Security → Automation*). If you said no, the tray shows
   *Allow NeedleX to control …* which opens that settings page.
   Browser tabs are not supported: macOS has no public "now playing" API.
+- **Signing:** run `scripts/make-signing-identity.sh` once; `npm run build` then signs every build with
+  the same free, self-signed identity, so macOS keeps NeedleX's permissions across rebuilds (ad-hoc
+  signatures change with each build and macOS asks again).
 - **Lock screen:** drawn through a private macOS framework (SkyLight), like other lock-screen music
   players; if a macOS update removes it, the lock screen simply stays as macOS draws it.
 - **Permissions:** *Automation* (Spotify / Music) is required. *System Audio Recording*

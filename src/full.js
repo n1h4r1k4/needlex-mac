@@ -39,6 +39,7 @@ function demoBridge(q) {
     handlers['full:open']?.({});
     if (q.get('style')) setStyle(q.get('style'));
     if (q.get('glitter')) applySettings({ glitter: q.get('glitter') });
+    if (q.get('bg') || q.get('cover')) applySettings({ lyricStyle: q.get('style') || 'words', lyricBg: q.get('bg') || 'simple', lyricCover: q.get('cover') === '1' });
     if (q.get('mode') === 'lyrics') setTimeout(() => setMode('lyrics'), 1300);
   }, 100);
   return {
@@ -317,7 +318,7 @@ function setArt(src, animate) {
     applyPalette(img);
     zoomImgs.forEach((i) => { i.src = src; });
     $('#bg-words .wash').src = src;
-    $$('#bg-aura .wash, #bg-big .wash, #lock-record img').forEach((i) => { i.src = src; });
+    $$('#bg-aura .wash, #bg-big .wash, #bg-glass .wash, #bg-fog .wash, #lock-record img').forEach((i) => { i.src = src; });
     $('.vinyl img').src = src;
     $('#thumb').src = src;
     if (window.FlowBG) FlowBG.setImage(S.img);
@@ -495,6 +496,7 @@ const Stars = {
     // clock in the full view, between the clock and the password field on
     // the lock screen)
     const box = LOCK ? [0.2, 0.8, 0.32, 0.64] : WALL ? [0.16, 0.84, 0.24, 0.76] : [0.14, 0.86, 0.32, 0.82];
+    if (sideCover()) { box[0] = 0.46; box[1] = 0.92; }
     const [bx0, bx1, by0, by1] = [box[0] * W, box[1] * W, box[2] * H, box[3] * H];
     let x = W / 2, y = (by0 + by1) / 2;
     let ang = r() * Math.PI * 2;
@@ -619,7 +621,7 @@ const Words = {
     // centred on the desktop; under the clock in full screen and on the lock
     // screen (where the bottom stays clear for the password field)
     const dy = LOCK ? 0.02 : WALL ? 0 : 0.06;
-    return { prev: 0.33 + dy, cur: 0.5 + dy, next: 0.68 + dy, tilt: S.style === 'lens' ? 5 : 1.4 };
+    return { cx: sideCover() ? 0.66 : 0.5, prev: 0.33 + dy, cur: 0.5 + dy, next: 0.68 + dy, tilt: S.style === 'lens' ? 5 : 1.4 };
   },
   place(e) {
     e.el.style.transform = `translate(${e.x * innerWidth}px, ${e.y * innerHeight}px) translate(-50%, -50%) rotate(${e.rot}deg)`;
@@ -627,7 +629,7 @@ const Words = {
   // very long words are shrunk to fit the screen
   fit(e) {
     e.el.style.fontSize = '';
-    const max = innerWidth * 0.9;
+    const max = innerWidth * (sideCover() ? 0.5 : 0.9);
     const w = e.el.scrollWidth;
     if (w > max) e.el.style.fontSize = `${(parseFloat(getComputedStyle(e.el).fontSize) * max) / w}px`;
   },
@@ -660,7 +662,7 @@ const Words = {
   push(line, li, k) {
     const g = this.geo();
     const r = rng(hashStr(li + ':' + k));
-    const cx = 0.5 + (r() - 0.5) * 0.04;
+    const cx = g.cx + (r() - 0.5) * 0.04;
     for (const e of this.els) {
       e.age++;
       if (e.age === 1) {
@@ -713,7 +715,7 @@ const Words = {
     el.className = 'word chip';
     el.textContent = S.lines[nl].words[nk].w;
     this.root.appendChild(el);
-    const e = { el, role: 'chip', x: (cur ? cur.x : 0.5) + (r() - 0.5) * 0.05, y: g.next, rot: (r() - 0.5) * g.tilt };
+    const e = { el, role: 'chip', x: (cur ? cur.x : g.cx) + (r() - 0.5) * 0.05, y: g.next, rot: (r() - 0.5) * g.tilt };
     this.place(e);
     this.pop(e);
     this.chip = { li: nl, k: nk, e };
@@ -798,18 +800,26 @@ const Lines = {
 // Needle's five lyric effects, plus the whole song scrolling next to the cover
 const STYLES = ['words', 'lens', 'stars', 'terminal', 'aura', 'lines'];
 
+// The cover stays next to the lyrics (scrolling lines, or "Show album cover");
+// otherwise it blows up into the background as the lyrics start.
+function sideCover() { return S.style === 'lines' || !!S.settings.lyricCover; }
+const BGS = ['simple', 'glass', 'liquid', 'foggy'];
+
 function setStyle(style) {
   if (!STYLES.includes(style)) style = 'words';
-  const was = S.style;
+  const wasSide = stage.classList.contains('side');
   S.style = style;
   for (const k of STYLES) stage.classList.toggle(`style-${k}`, k === style);
+  const bg = BGS.includes(S.settings.lyricBg) ? S.settings.lyricBg : 'simple';
+  for (const k of BGS) stage.classList.toggle(`bg-${k}`, k === bg);
+  stage.classList.toggle('side', sideCover());
   Stars.reset();
   Words.reset();
   Term.reset();
   Lines.reset();
   S.li = S.wi = -2;
-  // the scrolling lines keep the cover on screen, the others blow it up
-  if (S.mode === 'lyrics' && (was === 'lines') !== (style === 'lines')) {
+  // switching between "cover aside" and "cover blown up": redo the transition
+  if (S.mode === 'lyrics' && wasSide !== sideCover()) {
     if (S.boxAnim) { S.boxAnim.cancel(); S.boxAnim = null; }
     card.getAnimations().forEach((a) => a.cancel());
     S.mode = 'cover';
@@ -834,7 +844,7 @@ function fullTransform() {
 
 async function setMode(m) {
   if (S.mode === m || S.busy) return;
-  if (S.style === 'lines') {        // the cover just moves aside for the lyrics
+  if (sideCover()) {                // the cover just moves aside for the lyrics
     S.mode = m;
     stage.classList.toggle('mode-lyrics', m === 'lyrics');
     stage.classList.toggle('mode-cover', m !== 'lyrics');
@@ -1048,6 +1058,12 @@ function frame(t) {
 
   // screen-edge light: travelling sections of a hot white line (see edge.js)
   const lyr = S.mode === 'lyrics';
+  // "Liquid" background: the cover keeps flowing (keeps drawing a moment
+  // after leaving the lyrics so the fade is smooth)
+  if (window.FlowBG && S.settings.lyricBg === 'liquid' && (lyr || t < S.glUntil)) {
+    if (lyr) S.glUntil = t + 1200;
+    FlowBG.draw({ time: t / 1000, level: smooth, mode: 0, pix: 0, glitch: 0, seed: (S.track ? hashStr(S.track.key) % 97 : 0) / 10 });
+  }
   if (window.Glitter) Glitter.draw(t, smooth, playing);
   if (window.EdgeLight && S.settings.glow) EdgeLight.draw(t, smooth, playing, S.lightRGB || [236, 226, 232], lyr ? 1 : 0.7);
 
@@ -1107,7 +1123,9 @@ function sizeGlass() {
 
 function applySettings(s) {
   S.settings = { ...S.settings, ...s };
-  if (S.settings.lyricStyle && S.settings.lyricStyle !== S.style) setStyle(S.settings.lyricStyle);
+  // effect, background and "Show album cover" (laid out again when any changes)
+  const look = [S.settings.lyricStyle, S.settings.lyricBg, !!S.settings.lyricCover].join('|');
+  if (look !== S.look) { S.look = look; setStyle(S.settings.lyricStyle || S.style); }
   if (window.Glitter) Glitter.setMode(S.settings.glitter || 'off');
   document.body.classList.toggle('no-glow', !S.settings.glow);
 }
@@ -1201,6 +1219,7 @@ if (WALL) {
     S.open = true;
     W.want = 'cover';
     if (LOCK) lockState('record');
+    if (window.FlowBG) FlowBG.resize();
     if (window.EdgeLight) EdgeLight.resize();
     if (window.Glitter) Glitter.resize();
     enter(true);

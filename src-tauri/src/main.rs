@@ -49,6 +49,13 @@ const LYRIC_CHOICES: [(&str, &str); 6] = [
     ("aura", "Aura"),
     ("lines", "Scrolling lines"),
 ];
+/// What's behind the lyrics (every effect).
+const LYRIC_BG_CHOICES: [(&str, &str); 4] = [
+    ("simple", "Simple (the effect's own look)"),
+    ("glass", "Glass"),
+    ("liquid", "Liquid"),
+    ("foggy", "Foggy"),
+];
 
 /// The looks that sit on your own wallpaper as an object you can drag around.
 pub fn wall_is_object(look: &str) -> bool {
@@ -94,6 +101,10 @@ pub struct Settings {
     /// Lyrics effect everywhere: "words" (Big Words) | "lens" | "stars" |
     /// "terminal" | "aura" | "lines".
     pub lyric_style: String,
+    /// Behind the lyrics: "simple" | "glass" | "liquid" | "foggy".
+    pub lyric_bg: String,
+    /// The album cover (and player card) next to the lyrics.
+    pub lyric_cover: bool,
     /// The now-playing view on the lock screen too (with the clock).
     pub lock_screen: bool,
 }
@@ -114,6 +125,8 @@ impl Default for Settings {
             glass: false,
             wallpaper: "lyrics".into(),
             lyric_style: "words".into(),
+            lyric_bg: "simple".into(),
+            lyric_cover: false,
             lock_screen: true,
         }
     }
@@ -520,7 +533,16 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         }
         items.push(it);
     }
-    let lyr_menu = lyr_menu.build()?;
+    let mut bg_menu = SubmenuBuilder::new(app, "Background");
+    for (id, label) in LYRIC_BG_CHOICES {
+        let it = check(&format!("lyrbg_{id}"), label, s.lyric_bg == id)?;
+        bg_menu = bg_menu.item(&it);
+        items.push(it);
+    }
+    let bg_menu = bg_menu.build()?;
+    let cover_item = check("lyrcover", "Show album cover", s.lyric_cover)?;
+    items.push(cover_item.clone());
+    let lyr_menu = lyr_menu.separator().item(&bg_menu).item(&cover_item).build()?;
 
     let open_full_item = MenuItemBuilder::with_id("open_full", "Open full screen").build(app)?;
     let recenter = MenuItemBuilder::with_id("recenter", "Re-center notch").build(app)?;
@@ -640,6 +662,26 @@ fn on_menu(app: &AppHandle, id: &str) {
         }
         other if other.starts_with("lyr_") => {
             apply_lyric_style(app, other["lyr_".len()..].to_string());
+        }
+        other if other.starts_with("lyrbg_") => {
+            let bg = other["lyrbg_".len()..].to_string();
+            update_setting(app, |s| s.lyric_bg = bg.clone());
+            let items = state.tray_items.lock().unwrap();
+            for (id, _) in LYRIC_BG_CHOICES {
+                if let Some(i) = items.get(&format!("lyrbg_{id}")) {
+                    let _ = i.set_checked(id == bg);
+                }
+            }
+        }
+        "lyrcover" => {
+            let mut on = false;
+            update_setting(app, |s| {
+                s.lyric_cover = !s.lyric_cover;
+                on = s.lyric_cover;
+            });
+            if let Some(i) = item {
+                let _ = i.set_checked(on);
+            }
         }
         other if other.starts_with("glitter_") => {
             let g = other["glitter_".len()..].to_string();

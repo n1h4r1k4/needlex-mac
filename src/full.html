@@ -30,6 +30,10 @@
     <div id="bg-black" class="bg"></div>
     <div id="bg-aura" class="bg"><img class="wash" alt="" /><div class="fade"></div></div>
     <div id="bg-big" class="bg"><img class="wash" alt="" /><div class="fade"></div></div>
+    <!-- chosen backgrounds (tray → Lyrics effect → Background): glass and fog
+         over the cover; liquid is the GPU flow below -->
+    <div id="bg-glass" class="bg"><img class="wash" alt="" /><div class="sheen"></div></div>
+    <div id="bg-fog" class="bg"><img class="wash" alt="" /><div class="mist m1"></div><div class="mist m2"></div><div class="veil"></div></div>
 
     <!-- GPU background for both lyric styles: liquid flow, zoom streaks, edge smear, glitch -->
     <canvas id="bg-gl" class="bg"></canvas>
@@ -104,6 +108,7 @@
   </div>
 
   <script src="glass.js"></script>
+  <script src="flow.js"></script>
   <script src="edge.js"></script>
   <script src="glitter.js"></script>
   <script src="full.js"></script>

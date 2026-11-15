@@ -416,8 +416,9 @@ body.no-glow #edge { display: none; }
 
 /* ============================================================ lyric effects (Needle) */
 
-/* the old GPU / zoom backgrounds are not used any more */
-#bg-stars, #bg-words, #bg-gl { display: none !important; }
+/* the old zoom backgrounds are not used any more; the GPU flow is "Liquid" */
+#bg-stars, #bg-words { display: none !important; }
+#stage #bg-gl { opacity: 0; }
 #stage { transition: background-color .9s ease; }
 
 /* backgrounds */
@@ -496,7 +497,7 @@ body.no-glow #edge { display: none; }
   padding: 0 6vw;
   font-family: ui-monospace, "SF Mono", Menlo, monospace; text-transform: lowercase;
 }
-#term .row { text-align: center; font-weight: 700; line-height: 1.15; letter-spacing: -.01em; }
+#term .row { max-width: 100%; text-align: center; font-weight: 700; line-height: 1.15; letter-spacing: -.01em; overflow-wrap: anywhere; }
 #term .row.o2 { font-size: 5vh; color: rgba(var(--accent), .4); }
 #term .row.o1 { font-size: 6.4vh; color: rgba(var(--accent), .66); }
 #term .row.cur { font-size: 9.5vh; color: rgb(var(--accent)); text-shadow: 0 0 3vh rgba(var(--accent), .35); }
@@ -509,9 +510,18 @@ body.no-glow #edge { display: none; }
 }
 @keyframes blink { 50% { opacity: 0; } }
 
-/* ---- scrolling lines: the cover moves left, the song scrolls on the right */
+/* ---- cover beside the lyrics (scrolling lines, or "Show album cover") */
 #cover { transition: opacity .5s ease, left .9s var(--spring), top .9s var(--spring); }
-#stage.mode-lyrics.style-lines #cover { left: 30vw; }
+#stage.mode-lyrics.side #cover { left: 26vw; }
+#stage.mode-lyrics.side.style-lines #cover { left: 30vw; }
+#stage.side #term { padding-left: 46vw; padding-right: 4vw; }
+#stage.side #term .row.cur { font-size: 7vh; }
+#stage.side #term .row.o1 { font-size: 5vh; }
+#stage.side #term .row.o2 { font-size: 4vh; }
+#stage.side.style-words .word.cur, #stage.side.style-aura .word.cur, #stage.side.style-lens .word.cur { font-size: 16vh; }
+#stage.side .word.prev { font-size: 6.5vh; }
+#stage.side .word.chip { font-size: 6.5vh; }
+#stage.mode-lyrics.side:not(.style-lines) #bg-cover { opacity: 0; }
 #lines {
   overflow: hidden;
   -webkit-mask-image: linear-gradient(180deg, transparent 18%, #000 36%, #000 64%, transparent 82%);
@@ -599,3 +609,44 @@ body.lock #stage.lk-record #lock-record { opacity: 1; transform: none; pointer-e
 
 /* 3 · lyrics: under the lock-screen clock */
 body.lock #term { padding-top: 10vh; }
+
+/* ============================================================ lyrics backgrounds */
+
+/* Simple is each effect's own look (above). The others replace it. */
+#stage.mode-lyrics:not(.bg-simple) #bg-black,
+#stage.mode-lyrics:not(.bg-simple) #bg-aura,
+#stage.mode-lyrics:not(.bg-simple) #bg-big,
+#stage.mode-lyrics:not(.bg-simple) #bg-cover { opacity: 0 !important; }
+body.wall #stage.mode-lyrics.style-words:not(.bg-simple) { background-color: rgb(8, 7, 10); }
+
+/* Glass: the cover behind frosted glass with a soft sheen */
+#bg-glass .wash, #bg-fog .wash {
+  position: absolute; left: -10%; top: -10%; width: 120%; height: 120%; object-fit: cover;
+}
+#bg-glass .wash { filter: blur(3.4vh) saturate(1.7) brightness(.72); }
+#bg-glass .sheen {
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(115deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,0) 28%, rgba(255,255,255,0) 58%, rgba(255,255,255,.09) 72%, rgba(255,255,255,0) 86%),
+    radial-gradient(120% 80% at 50% 120%, rgba(0,0,0,.4), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,.05), rgba(0,0,0,.18));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.08), inset 0 0 18vh rgba(255,255,255,.05);
+}
+#stage.mode-lyrics.bg-glass #bg-glass { opacity: 1; }
+
+/* Liquid: the cover keeps flowing (GPU) */
+#stage.mode-lyrics.bg-liquid #bg-gl { opacity: 1; }
+
+/* Foggy: the cover melted into a pale drifting mist */
+#bg-fog .wash { filter: blur(11vh) saturate(1.2) brightness(.78); transform: scale(1.1); }
+#bg-fog .mist {
+  position: absolute; width: 90vw; height: 70vh; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(225, 228, 238, .26), rgba(225, 228, 238, 0));
+  filter: blur(4vh);
+}
+#bg-fog .m1 { left: -20vw; top: 10vh; animation: fog-a 38s ease-in-out infinite alternate; }
+#bg-fog .m2 { right: -25vw; top: 35vh; animation: fog-b 46s ease-in-out infinite alternate; }
+#bg-fog .veil { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(190, 196, 210, .14), rgba(20, 20, 26, .35)); }
+@keyframes fog-a { to { transform: translate(28vw, -6vh) scale(1.15); } }
+@keyframes fog-b { to { transform: translate(-30vw, 8vh) scale(.92); } }
+#stage.mode-lyrics.bg-foggy #bg-fog { opacity: 1; }
