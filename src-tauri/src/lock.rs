@@ -94,7 +94,7 @@ pub fn hide(app: &AppHandle) {
 /// The lock-screen window takes the mouse only over the parts the page
 /// reported as clickable; everywhere else clicks go to the lock screen.
 /// It also tells the page when you start typing or point at the bottom of the
-/// screen, so it can uncover your picture and the password field.
+/// screen, so it can fade away and leave the login screen to you.
 fn spawn_hits(app: AppHandle) {
     std::thread::spawn(move || {
         let mut ignoring: Option<bool> = None;
@@ -142,7 +142,7 @@ fn spawn_hits(app: AppHandle) {
                 _ => false,
             };
             if mac::key_idle_secs() < 1.5 || near_login {
-                reveal_until = Instant::now() + Duration::from_secs(if near_login { 2 } else { 12 });
+                reveal_until = Instant::now() + Duration::from_secs(if near_login { 2 } else { 8 });
             }
             let reveal = Instant::now() < reveal_until;
             if revealed != Some(reveal) {

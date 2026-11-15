@@ -1214,7 +1214,7 @@ if (WALL) {
   const reportHits = () => {
     if (!LOCK) return;
     const rects = [];
-    if (S.open && !W.hiding) {
+    if (S.open && !W.hiding && !document.body.classList.contains('reveal')) {
       const add = (el) => {
         const b = el.getBoundingClientRect();
         if (b.width > 0 && b.height > 0) rects.push({ x: b.left, y: b.top, w: b.width, h: b.height });
@@ -1229,7 +1229,10 @@ if (WALL) {
   if (LOCK) {
     stage.classList.add('lk-record');
     // typing the password / pointing at it: uncover the login area for a moment
-    listen('lock:reveal', (e) => document.body.classList.toggle('reveal', !!e.payload));
+    listen('lock:reveal', (e) => {
+      document.body.classList.toggle('reveal', !!e.payload);
+      reportHits(); // faded away: clicks belong to the login screen
+    });
     setInterval(reportHits, 1000);
     document.addEventListener('click', (e) => {
       if (!S.open || W.hiding || e.target.closest('.card')) return;
