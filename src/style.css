@@ -411,6 +411,23 @@ body.no-glow #island .glow { display: none; }
 .pager i.on { background: rgba(255,255,255,.92); }
 .pager i.off { display: none; }
 
+/* small ‹ › on the island's sides to step through the pages */
+.pg-nav {
+  position: absolute; top: 50%; z-index: 6;
+  width: 16px; height: 36px; margin-top: -18px; padding: 0;
+  border: 0; border-radius: 8px; background: transparent;
+  display: grid; place-items: center; cursor: pointer;
+  color: rgba(255,255,255,.42);
+  opacity: 0; pointer-events: none;
+  transition: opacity .3s ease, color .2s ease, background .2s ease, transform .2s var(--spring);
+}
+.pg-nav.prev { left: 3px; }
+.pg-nav.next { right: 3px; }
+.pg-nav svg { width: 8px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.pg-nav:hover { color: #fff; background: rgba(255,255,255,.1); }
+.pg-nav:active { transform: scale(.88); }
+#island[data-view="expanded"]:not(.lyrics-open) .pg-nav:not(.off) { opacity: 1; pointer-events: auto; }
+
 /* weather: now on the left, the next six hours on the right */
 .pg-weather { display: flex; align-items: center; gap: 14px; }
 .w-now { flex: none; width: 150px; }

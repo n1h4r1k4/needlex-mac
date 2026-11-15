@@ -222,6 +222,9 @@ function render() {
     d.classList.toggle('on', d.dataset.page === curPage());
     d.classList.toggle('off', !ps.includes(d.dataset.page));
   });
+  const pi = ps.indexOf(curPage());
+  $('.pg-nav.prev').classList.toggle('off', pi <= 0);
+  $('.pg-nav.next').classList.toggle('off', pi >= ps.length - 1);
   island.classList.toggle('lyrics-open', v === 'lyrics');
   const glassy = GLASS_VIEWS.has(v) && S.snapOk;
   island.classList.toggle('glassy', glassy);
@@ -702,6 +705,14 @@ function setPage(p) {
   if (curPage() === 'calendar') loadCalendar();
 }
 $$('.pager i').forEach((d) => d.addEventListener('click', (e) => { e.stopPropagation(); setPage(d.dataset.page); }));
+// ‹ › on the sides: one page back / forward
+function stepPage(by) {
+  const ps = pages();
+  const j = ps.indexOf(curPage()) + by;
+  if (j >= 0 && j < ps.length) setPage(ps[j]);
+}
+$('.pg-nav.prev').addEventListener('click', (e) => { e.stopPropagation(); stepPage(-1); });
+$('.pg-nav.next').addEventListener('click', (e) => { e.stopPropagation(); stepPage(1); });
 
 // two-finger swipe sideways: one page per gesture (momentum is ignored)
 let swipeAcc = 0, swipeLock = false, swipeEndT = 0;
@@ -713,11 +724,8 @@ island.addEventListener('wheel', (e) => {
   if (swipeLock) return;
   swipeAcc += e.deltaX;
   if (Math.abs(swipeAcc) < 40) return;
-  const ps = pages();
-  const i = ps.indexOf(curPage());
-  const j = Math.max(0, Math.min(ps.length - 1, i + (swipeAcc > 0 ? 1 : -1)));
   swipeLock = true;
-  if (j !== i) setPage(ps[j]);
+  stepPage(swipeAcc > 0 ? 1 : -1);
 }, { passive: false });
 
 // ---- weather icons (colours like the system's)
