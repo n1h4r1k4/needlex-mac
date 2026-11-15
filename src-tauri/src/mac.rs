@@ -55,6 +55,8 @@ const ANY_INPUT: u32 = u32::MAX; // kCGAnyInputEventType
 pub const ISLAND_LEVEL: isize = 26;
 /// The full-screen view covers the Dock and the menu bar.
 pub const FULL_LEVEL: isize = 27;
+/// Above the lock screen (loginwindow uses 2001–2004), below the cursor.
+pub const LOCK_LEVEL: isize = 2010;
 
 const DESKTOP_LEVEL_KEY: i32 = 2; // kCGDesktopWindowLevelKey (the wallpaper)
 const DESKTOP_ICON_LEVEL_KEY: i32 = 18; // kCGDesktopIconWindowLevelKey (Finder's icons)
@@ -265,7 +267,8 @@ pub fn setup_lock_window(ns_window: *mut c_void) -> bool {
     }
     let w = ns_window as *mut AnyObject;
     unsafe {
-        let _: () = msg_send![w, setLevel: 1000isize]; // screen-saver level
+        // macOS draws the lock screen at window levels 2001–2004: go just above
+        let _: () = msg_send![w, setLevel: LOCK_LEVEL];
         let _: () = msg_send![w, setHasShadow: false];
         let _: () = msg_send![w, setIgnoresMouseEvents: true];
         // clicks on the record / cover / player must not activate NeedleX

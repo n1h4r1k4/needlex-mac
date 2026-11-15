@@ -20,6 +20,11 @@ pub fn spawn(app: AppHandle) {
         loop {
             std::thread::sleep(Duration::from_millis(250));
             let locked = mac::screen_locked();
+            if !locked && app.get_webview_window("lock").is_some() && !was_locked {
+                // never leave it over the desktop (it sits above everything)
+                let a = app.clone();
+                let _ = app.run_on_main_thread(move || hide(&a));
+            }
             if locked == was_locked {
                 continue;
             }

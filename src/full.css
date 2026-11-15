@@ -541,22 +541,28 @@ body.wall .const.gone { transition-duration: .7s; }
 
 /* ============================================================ lock screen */
 
-body.lock { --A: 29vh; }
-/* the bottom of the screen stays clear for the password field / Touch ID */
+body.lock { --A: 27vh; }
+/* the bottom of the screen stays clear for your picture, name and the
+   password field / Touch ID */
 body.lock #stage {
-  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 80%, transparent 92%);
-  mask-image: linear-gradient(180deg, #000 0%, #000 80%, transparent 92%);
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 70%, transparent 79%);
+  mask-image: linear-gradient(180deg, #000 0%, #000 70%, transparent 79%);
 }
+body.lock #lines {
+  -webkit-mask-image: linear-gradient(180deg, transparent 20%, #000 34%, #000 56%, transparent 68%);
+  mask-image: linear-gradient(180deg, transparent 20%, #000 34%, #000 56%, transparent 68%);
+}
+body.lock #lines .inner { top: 46%; }
 /* a clock like the system one */
 #clock { transition: opacity .6s ease; }
-body.lock #clock { top: 7vh; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; }
-body.lock #clock .date { font-size: 2.5vh; font-weight: 600; color: rgba(236, 233, 246, .85); font-variation-settings: normal; }
+body.lock #clock { top: 8.5vh; font-family: ui-rounded, -apple-system, BlinkMacSystemFont, sans-serif; }
+body.lock #clock .date { font-size: 2.6vh; font-weight: 600; color: rgba(236, 233, 246, .88); font-variation-settings: normal; }
 body.lock #clock .time {
-  font-size: 15vh; font-weight: 700; letter-spacing: -.01em; line-height: 1.05;
+  font-size: 13.5vh; font-weight: 700; letter-spacing: -.005em; line-height: 1.05;
   background: none; color: rgba(226, 223, 240, .8); -webkit-text-stroke: 0; filter: none;
   font-variation-settings: normal;
 }
-body.lock #cover { top: 30vh; }
+body.lock #cover { top: 28vh; }
 /* the player card is dark glass tinted with the cover, readable on any lock screen */
 body.lock .card {
   background: linear-gradient(180deg, rgba(var(--dark), .62), rgba(var(--dark), .78));
@@ -567,13 +573,13 @@ body.lock .card {
 body.lock #stage.lk-record { background-color: transparent; }
 body.lock #stage.lk-record .bg { opacity: 0 !important; }
 body.lock #stage.lk-record #clock { opacity: 0; }
-body.lock #stage.lk-record #cover { top: calc(60vh - var(--A) - 1.9vh); }
+body.lock #stage.lk-record #cover { top: calc(55vh - var(--A) - 1.9vh); }
 body.lock .art-box { transition: opacity .5s ease; }
 body.lock #stage.lk-record .art-box { opacity: 0; pointer-events: none; }
 #lock-record { display: none; }
 body.lock #lock-record {
   display: block; position: absolute; z-index: 5;
-  left: 50%; top: 41vh; width: 16vh; height: 16vh; margin-left: -8vh;
+  left: 50%; top: 37vh; width: 16vh; height: 16vh; margin-left: -8vh;
   opacity: 0; transform: scale(.6); pointer-events: none; cursor: pointer;
   transition: opacity .5s ease, transform .8s var(--spring);
 }

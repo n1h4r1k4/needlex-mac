@@ -494,7 +494,7 @@ const Stars = {
     // where the stars may go: a box in the middle of the screen (under the
     // clock in the full view, between the clock and the password field on
     // the lock screen)
-    const box = LOCK ? [0.2, 0.8, 0.33, 0.7] : WALL ? [0.16, 0.84, 0.24, 0.76] : [0.14, 0.86, 0.32, 0.82];
+    const box = LOCK ? [0.2, 0.8, 0.32, 0.64] : WALL ? [0.16, 0.84, 0.24, 0.76] : [0.14, 0.86, 0.32, 0.82];
     const [bx0, bx1, by0, by1] = [box[0] * W, box[1] * W, box[2] * H, box[3] * H];
     let x = W / 2, y = (by0 + by1) / 2;
     let ang = r() * Math.PI * 2;
@@ -616,8 +616,9 @@ const Words = {
   wi: -1,
   reset() { this.root.innerHTML = ''; this.els = []; this.chip = null; this.li = -2; this.wi = -1; },
   geo() {
-    // centred on the desktop; under the clock in full screen and on the lock screen
-    const dy = WALL && !LOCK ? 0 : 0.06;
+    // centred on the desktop; under the clock in full screen and on the lock
+    // screen (where the bottom stays clear for the password field)
+    const dy = LOCK ? 0.02 : WALL ? 0 : 0.06;
     return { prev: 0.33 + dy, cur: 0.5 + dy, next: 0.68 + dy, tilt: S.style === 'lens' ? 5 : 1.4 };
   },
   place(e) {
