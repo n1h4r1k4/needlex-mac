@@ -25,6 +25,12 @@
       <div class="vignette"></div>
     </div>
 
+    <!-- lyric effect backgrounds: black (Lens, Stars, Terminal), the cover's
+         colours blurred (Aura), the cover / your own wallpaper (Big Words) -->
+    <div id="bg-black" class="bg"></div>
+    <div id="bg-aura" class="bg"><img class="wash" alt="" /><div class="fade"></div></div>
+    <div id="bg-big" class="bg"><img class="wash" alt="" /><div class="fade"></div></div>
+
     <!-- GPU background for both lyric styles: liquid flow, zoom streaks, edge smear, glitch -->
     <canvas id="bg-gl" class="bg"></canvas>
 
@@ -36,6 +42,9 @@
       <div class="date"></div>
       <div class="time"></div>
     </div>
+
+    <!-- lock screen: the record turning under the clock -->
+    <div id="lock-record"><div class="disc"><img alt="" /></div></div>
 
     <!-- cover view -->
     <div id="cover">
@@ -72,8 +81,14 @@
     <!-- lyrics: constellation ("stars") style -->
     <div id="stars" class="lyr"></div>
 
-    <!-- lyrics: big words style -->
+    <!-- lyrics: Big Words / Lens / Aura -->
     <div id="words" class="lyr"></div>
+
+    <!-- lyrics: Terminal -->
+    <div id="term" class="lyr"></div>
+
+    <!-- lyrics: scrolling lines next to the cover -->
+    <div id="lines" class="lyr"><div class="inner"></div></div>
 
     <div id="lyr-msg"></div>
 
@@ -89,7 +104,6 @@
   </div>
 
   <script src="glass.js"></script>
-  <script src="flow.js"></script>
   <script src="edge.js"></script>
   <script src="glitter.js"></script>
   <script src="full.js"></script>

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NeedleX Desktop</title>
+  <link rel="stylesheet" href="desk.css" />
+</head>
+<body>
+  <!-- the cover as an object on the desktop: drag it anywhere, click to play / pause -->
+  <div id="obj" class="look-turntable">
+    <!-- aura: the cover's own colours glowing around it -->
+    <div class="glow"><img class="art" alt="" /></div>
+    <!-- turntable plinth -->
+    <div class="deck"><i class="lamp"></i><i class="knob"></i></div>
+    <!-- the record: on the platter, or sliding out of the sleeve -->
+    <div class="disc">
+      <div class="spin"><img class="art label" alt="" /><i class="hole"></i></div>
+      <div class="sheen"></div>
+    </div>
+    <!-- tone arm: swings onto the record while it plays -->
+    <div class="arm"><i class="rod"><b class="head"></b></i><i class="pivot"></i></div>
+    <!-- the sleeve / the cover itself -->
+    <div class="sleeve"><img class="art" alt="" /></div>
+    <div class="caption"><div class="title"></div><div class="artist"></div></div>
+  </div>
+  <script src="desk.js"></script>
+</body>
+</html>

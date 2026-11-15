@@ -1,6 +1,9 @@
-//! Keeps the notch correct on every screen setup: any resolution, any Windows
-//! scale (100 %…300 %+), several monitors with different scales, monitors being
-//! plugged/unplugged, resolution or scale changes while running.
+//! Keeps the notch correct on every screen setup: any resolution, Retina or
+//! not, several displays with different scales, displays being plugged in or
+//! removed, resolution changes while running.
+//!
+//! macOS positions windows in points, so everything here is logical px:
+//! a display's logical frame is its physical frame divided by its own scale.
 //!
 //! * The island UI is designed for a 560×520 (CSS px) canvas. On small or
 //!   heavily-scaled screens the whole island is zoomed down (webview zoom), so
@@ -10,9 +13,9 @@
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use tauri::{AppHandle, Manager, Monitor, PhysicalPosition, PhysicalSize};
+use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, Monitor};
 
-use crate::AppState;
+use crate::{mac, AppState};
 
 pub const ISLAND_W: f64 = 560.0;
 pub const ISLAND_H: f64 = 520.0;
@@ -36,16 +39,9 @@ pub fn target_monitor(app: &AppHandle) -> Option<Monitor> {
 }
 
 pub fn monitor_label(i: usize, m: &Monitor, primary: bool) -> String {
-    let s = m.scale_factor();
-    let size = m.size();
-    format!(
-        "Display {} – {}×{} @ {}%{}",
-        i + 1,
-        size.width,
-        size.height,
-        (s * 100.0).round(),
-        if primary { " (main)" } else { "" }
-    )
+    let (_, _, w, h) = logical_frame(m);
+    let name = m.name().cloned().unwrap_or_else(|| format!("Display {}", i + 1));
+    format!("{name} – {w:.0}×{h:.0}{}", if primary { " (main)" } else { "" })
 }
 
 /// Zoom that makes the island fit the monitor (never enlarges past 100 %).
@@ -55,24 +51,28 @@ fn fit_zoom(m: &Monitor) -> f64 {
     (lh * 0.92 / ISLAND_H).min(lw / ISLAND_W).clamp(0.45, 1.0)
 }
 
+/// Logical frame (x, y, w, h) of a display.
+pub fn logical_frame(m: &Monitor) -> (f64, f64, f64, f64) {
+    let s = m.scale_factor();
+    let (p, z) = (m.position(), m.size());
+    (p.x as f64 / s, p.y as f64 / s, z.width as f64 / s, z.height as f64 / s)
+}
+
 /// Puts the island on the target monitor at `offset` logical px from the
 /// top-centre, with a magnet at the middle. Returns the applied offset.
 pub fn place_island(app: &AppHandle, offset: f64) -> f64 {
     let Some(win) = app.get_webview_window("main") else { return 0.0 };
     let Some(mon) = target_monitor(app) else { return 0.0 };
-    let scale = mon.scale_factor();
     let zoom = *app.state::<AppState>().zoom.lock().unwrap();
-    // window size in this monitor's physical pixels (don't trust outer_size
-    // while the window may still be on a monitor with another scale)
-    let ww = (ISLAND_W * zoom * scale).round();
-    let (mp, ms) = (mon.position(), mon.size());
-    let max = ((ms.width as f64 - ww) / 2.0 / scale).max(0.0);
+    let ww = ISLAND_W * zoom;
+    let (mx, my, mw, _) = logical_frame(&mon);
+    let max = ((mw - ww) / 2.0).max(0.0);
     let mut off = offset.clamp(-max, max);
     if off.abs() < MAGNET_PX {
         off = 0.0;
     }
-    let x = mp.x as f64 + (ms.width as f64 - ww) / 2.0 + off * scale;
-    let _ = win.set_position(PhysicalPosition::new(x.round() as i32, mp.y));
+    let x = mx + (mw - ww) / 2.0 + off;
+    let _ = win.set_position(LogicalPosition::new(x.round(), my));
     app.state::<AppState>().geo_dirty.store(true, Ordering::Relaxed);
     off
 }
@@ -86,17 +86,8 @@ pub fn relayout(app: &AppHandle) {
     *app.state::<AppState>().zoom.lock().unwrap() = zoom;
     let off = app.state::<AppState>().settings.lock().unwrap().notch_offset;
 
-    // move onto the monitor first (Windows rescales the window when it crosses
-    // to a monitor with another DPI), then size, then centre precisely
-    place_island(app, off);
-    std::thread::sleep(Duration::from_millis(60));
-    let s = mon.scale_factor();
-    let _ = win.set_size(PhysicalSize::new(
-        (ISLAND_W * zoom * s).round() as u32,
-        (ISLAND_H * zoom * s).round() as u32,
-    ));
+    let _ = win.set_size(LogicalSize::new(ISLAND_W * zoom, ISLAND_H * zoom));
     let _ = win.set_zoom(zoom);
-    std::thread::sleep(Duration::from_millis(40));
     place_island(app, off);
 
     if app
@@ -106,33 +97,30 @@ pub fn relayout(app: &AppHandle) {
     {
         fit_full(app);
     }
+    fit_wall(app);
     let _ = tauri::Emitter::emit(app, "display", zoom);
 }
 
-/// Make the full-screen window cover exactly the notch's monitor. Re-asserts a
-/// moment later because crossing to a monitor with another DPI makes Windows
-/// resize the window on its own.
+/// Make the full-screen window cover exactly the notch's monitor (menu bar
+/// and Dock included).
 pub fn fit_full(app: &AppHandle) {
-    let Some(full) = app.get_webview_window("full") else { return };
+    fit_screen(app, "full");
+}
+
+/// The desktop wallpaper covers the notch's monitor too.
+pub fn fit_wall(app: &AppHandle) {
+    fit_screen(app, "wall");
+    app.state::<AppState>().wall_dirty.store(true, Ordering::Relaxed);
+}
+
+fn fit_screen(app: &AppHandle, label: &str) {
+    let Some(win) = app.get_webview_window(label) else { return };
     let Some(mon) = target_monitor(app) else { return };
-    let (pos, size) = (*mon.position(), *mon.size());
-    let apply = |f: &tauri::WebviewWindow| {
-        let _ = f.set_position(pos);
-        let _ = f.set_size(size);
-    };
-    apply(&full);
-    let f2 = full.clone();
-    std::thread::spawn(move || {
-        for wait in [120u64, 350, 900] {
-            std::thread::sleep(Duration::from_millis(wait));
-            let ok = f2.outer_position().map(|p| p == pos).unwrap_or(false)
-                && f2.outer_size().map(|s| s == size).unwrap_or(false);
-            if !ok {
-                let _ = f2.set_position(pos);
-                let _ = f2.set_size(size);
-            }
-        }
-    });
+    let (x, y, w, h) = logical_frame(&mon);
+    // size first: AppKit keeps the bottom edge when a window grows, so
+    // positioning first would push the top off the screen
+    let _ = win.set_size(LogicalSize::new(w, h));
+    let _ = win.set_position(LogicalPosition::new(x, y));
 }
 
 fn signature(app: &AppHandle) -> String {
@@ -171,39 +159,30 @@ pub fn spawn(app: AppHandle) {
     });
 }
 
-/// Drag the notch sideways with the mouse. Tracking happens here (real screen
-/// pixels) so it is exact at any scale, and ends by itself when the left
-/// button is released.
+/// Drag the notch sideways with the mouse. Tracking happens here (global
+/// screen points) so it is exact at any scale, and ends by itself when the
+/// left button is released.
 pub fn drag(app: AppHandle) {
-    use windows::Win32::Foundation::POINT;
-    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
-    use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
-
     let state = app.state::<AppState>();
     if state.dragging.swap(true, Ordering::SeqCst) {
         return;
     }
     let from = state.settings.lock().unwrap().notch_offset;
     std::thread::spawn(move || {
-        let scale = target_monitor(&app).map(|m| m.scale_factor()).unwrap_or(1.0);
-        let mut start = POINT::default();
-        unsafe {
-            let _ = GetCursorPos(&mut start);
-        }
+        let start = mac::cursor().map(|c| c.0).unwrap_or(0.0);
         let mut applied = from;
-        let mut last_x = i32::MIN;
+        let mut last_x = f64::NAN;
         loop {
             std::thread::sleep(Duration::from_millis(8));
-            let down = unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) } as u16 & 0x8000 != 0;
-            if !down {
+            if !mac::left_button_down() {
                 break;
             }
-            let mut p = POINT::default();
-            if unsafe { GetCursorPos(&mut p) }.is_err() || p.x == last_x {
+            let Some((x, _)) = mac::cursor() else { continue };
+            if x == last_x {
                 continue;
             }
-            last_x = p.x;
-            let want = from + (p.x - start.x) as f64 / scale;
+            last_x = x;
+            let want = from + (x - start);
             applied = place_island(&app, want);
             let _ = tauri::Emitter::emit(&app, "notch:drag", serde_json::json!({ "applied": applied, "want": want, "done": false }));
         }

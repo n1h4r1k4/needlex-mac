@@ -17,7 +17,7 @@
 html, body {
   margin: 0; width: 100%; height: 100%; overflow: hidden;
   background: transparent; color: #fff;
-  font-family: "Lyric Sans", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  font-family: "Lyric Sans", -apple-system, "Segoe UI Variable Display", "Segoe UI", sans-serif;
   user-select: none; -webkit-user-select: none; cursor: default;
   -webkit-font-smoothing: antialiased;
 }
@@ -413,3 +413,183 @@ body.no-glow #edge { display: none; }
   z-index: 2; pointer-events: none;
   opacity: 0; transition: opacity .8s ease;
 }
+
+/* ============================================================ lyric effects (Needle) */
+
+/* the old GPU / zoom backgrounds are not used any more */
+#bg-stars, #bg-words, #bg-gl { display: none !important; }
+#stage { transition: background-color .9s ease; }
+
+/* backgrounds */
+#bg-black { background: #000; }
+#stage.mode-lyrics.style-lens #bg-black,
+#stage.mode-lyrics.style-stars #bg-black,
+#stage.mode-lyrics.style-terminal #bg-black { opacity: 1; }
+#bg-aura .wash, #bg-big .wash {
+  position: absolute; left: -12%; top: -12%; width: 124%; height: 124%; object-fit: cover;
+}
+#bg-aura .wash { filter: blur(9vh) saturate(1.6) brightness(.82); }
+#bg-aura .fade {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,0) 42%, rgba(205,205,220,.3) 100%);
+}
+#stage.mode-lyrics.style-aura #bg-aura { opacity: 1; }
+#bg-big .wash { filter: blur(.5vh) saturate(1.15) brightness(.78); }
+#bg-big .fade {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,.06), rgba(0,0,0,0) 45%, rgba(0,0,0,.3));
+}
+#stage.mode-lyrics.style-words #bg-big { opacity: 1; }
+#stage.mode-lyrics.style-lines #bg-cover { opacity: 1; }
+
+/* which lyrics layer is shown */
+#stage.mode-lyrics.style-lens #words,
+#stage.mode-lyrics.style-aura #words,
+#stage.mode-lyrics.style-terminal #term,
+#stage.mode-lyrics.style-lines #lines { opacity: 1; }
+
+/* ---- Big Words / Aura / Lens: the words take the cover's colour */
+#stage .word.enter { opacity: 0 !important; filter: blur(14px); }
+#stage .word.beat { filter: brightness(1.25); }
+.word .ico { height: .74em; width: .6em; margin-left: .12em; vertical-align: -.02em; }
+#stage.style-words .word, #stage.style-aura .word, #stage.style-lens .word { font-weight: 900; letter-spacing: -.035em; }
+#stage.style-words .word.cur, #stage.style-aura .word.cur {
+  font-size: 22vh; font-style: normal; color: rgb(var(--accent));
+  text-shadow: 0 1vh 5vh rgba(0,0,0,.22);
+}
+#stage.style-words .word.prev, #stage.style-aura .word.prev {
+  font-size: 8vh; font-style: normal; opacity: .92;
+  color: color-mix(in srgb, rgb(var(--accent)) 55%, #e2e7f2);
+  text-shadow: 0 .4vh 2vh rgba(0,0,0,.18);
+}
+#stage.style-words .word.chip, #stage.style-aura .word.chip {
+  font-size: 8.5vh; font-style: italic; color: #fff;
+  background: none; box-shadow: none; padding: 0;
+  text-shadow: 0 .6vh 2.4vh rgba(0,0,0,.35);
+}
+#stage.style-lens .word.cur { font-size: 21vh; font-style: normal; color: rgb(var(--accent)); text-shadow: none; }
+#stage.style-lens .word.prev {
+  font-size: 8.5vh; font-style: normal; opacity: 1; text-shadow: none;
+  color: color-mix(in srgb, rgb(var(--accent)) 50%, #8b95a9);
+}
+#stage.style-lens .word.chip {
+  font-size: 7.6vh; font-style: italic; text-shadow: none; box-shadow: none;
+  color: color-mix(in srgb, rgb(var(--accent)) 18%, #050a18);
+  background: rgb(var(--accent)); padding: .1vh 1.3vh .7vh; border-radius: .7vh;
+}
+
+/* ---- Stars: a constellation in the cover's colour, the sung word big */
+#stage.style-stars .const line { stroke: rgba(var(--accent), .8); filter: drop-shadow(0 0 3px rgba(var(--accent), .55)); }
+#stage.style-stars .node .dot { background: color-mix(in srgb, rgb(var(--accent)) 30%, #fff); box-shadow: 0 0 .8vh 2px rgba(var(--accent), .8); }
+#stage.style-stars .node .ring { border-color: rgba(var(--accent), .9); }
+#stage.style-stars .spark path, #stage.style-stars .spark circle { fill: color-mix(in srgb, rgb(var(--accent)) 30%, #fff); }
+#stage.style-stars .node .lbl { font-size: 2.4vh; font-weight: 700; color: color-mix(in srgb, rgb(var(--accent)) 38%, #b6bfd2); }
+#stage.style-stars .node.major .lbl { font-size: 4.6vh; font-weight: 850; color: color-mix(in srgb, rgb(var(--accent)) 32%, #c7cedc); }
+#stage.style-stars .node.cur .lbl {
+  font-size: 9vh; font-weight: 900; letter-spacing: -.03em; color: rgb(var(--accent));
+  text-shadow: 0 0 4vh rgba(var(--accent), .45);
+}
+
+/* ---- Terminal: typed in monospace with a red block cursor */
+#term {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2.4vh;
+  padding: 0 6vw;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; text-transform: lowercase;
+}
+#term .row { text-align: center; font-weight: 700; line-height: 1.15; letter-spacing: -.01em; }
+#term .row.o2 { font-size: 5vh; color: rgba(var(--accent), .4); }
+#term .row.o1 { font-size: 6.4vh; color: rgba(var(--accent), .66); }
+#term .row.cur { font-size: 9.5vh; color: rgb(var(--accent)); text-shadow: 0 0 3vh rgba(var(--accent), .35); }
+#term .w { display: none; }
+#term .w.on { display: inline; }
+#term .cursor {
+  display: inline-block; width: .55em; height: .9em; vertical-align: -.08em;
+  background: #ff4747; box-shadow: 0 0 2vh rgba(255, 71, 71, .5);
+  animation: blink 1.05s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+/* ---- scrolling lines: the cover moves left, the song scrolls on the right */
+#cover { transition: opacity .5s ease, left .9s var(--spring), top .9s var(--spring); }
+#stage.mode-lyrics.style-lines #cover { left: 30vw; }
+#lines {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(180deg, transparent 18%, #000 36%, #000 64%, transparent 82%);
+  mask-image: linear-gradient(180deg, transparent 18%, #000 36%, #000 64%, transparent 82%);
+}
+#lines .inner { position: absolute; left: 50vw; width: 36vw; top: 52%; transition: transform .8s var(--ease); }
+#lines .ln {
+  font-size: 3.4vh; font-weight: 700; line-height: 1.22; margin-bottom: 2.8vh;
+  color: rgba(255,255,255,.3); transform-origin: 0 50%;
+  transition: color .5s ease, transform .6s var(--spring);
+}
+#lines .ln.cur { color: #fff; transform: scale(1.05); }
+
+/* ============================================================ desktop wallpaper */
+
+/* nothing on the desktop can be clicked: no buttons, hints or messages */
+body.wall #corner, body.wall #hint, body.wall #lyr-msg, body.wall:not(.lock) .row-controls { display: none; }
+/* the clock is only on the lock screen; without it the cover sits in the middle */
+body.wall:not(.lock) #clock { display: none; }
+body.wall:not(.lock) #cover { top: 24vh; }
+/* Big Words sits right on your own wallpaper (desktop and lock screen) */
+body.wall #bg-big .wash { display: none; }
+body.wall #stage.mode-lyrics.style-words { background-color: transparent; }
+body.wall #stage.mode-lyrics.style-words .word.cur { text-shadow: 0 .5vh 3vh rgba(0,0,0,.22); }
+/* one constellation at a time: the last line clears quickly */
+body.wall .const.gone { transition-duration: .7s; }
+
+/* ============================================================ lock screen */
+
+body.lock { --A: 29vh; }
+/* the bottom of the screen stays clear for the password field / Touch ID */
+body.lock #stage {
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 80%, transparent 92%);
+  mask-image: linear-gradient(180deg, #000 0%, #000 80%, transparent 92%);
+}
+/* a clock like the system one */
+#clock { transition: opacity .6s ease; }
+body.lock #clock { top: 7vh; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; }
+body.lock #clock .date { font-size: 2.5vh; font-weight: 600; color: rgba(236, 233, 246, .85); font-variation-settings: normal; }
+body.lock #clock .time {
+  font-size: 15vh; font-weight: 700; letter-spacing: -.01em; line-height: 1.05;
+  background: none; color: rgba(226, 223, 240, .8); -webkit-text-stroke: 0; filter: none;
+  font-variation-settings: normal;
+}
+body.lock #cover { top: 30vh; }
+/* the player card is dark glass tinted with the cover, readable on any lock screen */
+body.lock .card {
+  background: linear-gradient(180deg, rgba(var(--dark), .62), rgba(var(--dark), .78));
+  backdrop-filter: blur(24px) saturate(1.6); -webkit-backdrop-filter: blur(24px) saturate(1.6);
+}
+
+/* 1 · the record, over your own lock screen (its clock shows through) */
+body.lock #stage.lk-record { background-color: transparent; }
+body.lock #stage.lk-record .bg { opacity: 0 !important; }
+body.lock #stage.lk-record #clock { opacity: 0; }
+body.lock #stage.lk-record #cover { top: calc(60vh - var(--A) - 1.9vh); }
+body.lock .art-box { transition: opacity .5s ease; }
+body.lock #stage.lk-record .art-box { opacity: 0; pointer-events: none; }
+#lock-record { display: none; }
+body.lock #lock-record {
+  display: block; position: absolute; z-index: 5;
+  left: 50%; top: 41vh; width: 16vh; height: 16vh; margin-left: -8vh;
+  opacity: 0; transform: scale(.6); pointer-events: none; cursor: pointer;
+  transition: opacity .5s ease, transform .8s var(--spring);
+}
+body.lock #stage.lk-record #lock-record { opacity: 1; transform: none; pointer-events: auto; }
+#lock-record .disc {
+  width: 100%; height: 100%; border-radius: 50%;
+  display: grid; place-items: center;
+  background:
+    radial-gradient(circle, transparent 0 33%, #0a0a0c 33.5% 35.5%, transparent 36%),
+    repeating-radial-gradient(circle, #0f0f11 0 .9px, #1c1c20 1.3px, #0d0d0f 1.9px),
+    #0e0e10;
+  box-shadow: 0 1.4vh 4vh rgba(0,0,0,.5), inset 0 0 0 .3vh #060607;
+  animation: spin 1.8s linear infinite; animation-play-state: paused;
+}
+#stage.playing #lock-record .disc { animation-play-state: running; }
+#lock-record img { width: 36%; height: 36%; border-radius: 50%; object-fit: cover; }
+
+/* 3 · lyrics: under the lock-screen clock */
+body.lock #term { padding-top: 10vh; }

@@ -1,7 +1,7 @@
 //! High-resolution album art and desktop backdrop capture.
 //!
-//! * `hires_art` – Windows only gets small thumbnails from players (Spotify
-//!   300 px, browsers often less). We look the song up in the iTunes Search
+//! * `hires_art` – players only hand out small covers (Spotify 640 px, Apple
+//!   Music often the file's embedded thumbnail). We look the song up in the iTunes Search
 //!   API (2000 px covers) with Deezer (1000 px) as fallback – both free, no key.
 //! * `capture_backdrop` – grabs the desktop pixels behind the island window so
 //!   the island can render real liquid glass (refraction of what's behind it).
@@ -323,55 +323,24 @@ pub async fn hires_art(
     Ok(url)
 }
 
-/// JPEG of the screen area under the island window (physical pixels).
+/// JPEG of the screen area under the island window, with NeedleX's own
+/// windows left out. Only when the liquid glass is switched on (it needs the
+/// Screen Recording permission); otherwise the island is plain black.
 #[tauri::command(async)]
 pub fn capture_backdrop(app: AppHandle) -> Result<String, String> {
-    use windows::Win32::Graphics::Gdi::*;
-
+    if !app.state::<AppState>().settings.lock().unwrap().glass {
+        return Err("liquid glass is off".into());
+    }
     let win = app.get_webview_window("main").ok_or("no window")?;
-    let pos = win.outer_position().map_err(|e| e.to_string())?;
-    let size = win.outer_size().map_err(|e| e.to_string())?;
-    let (w, h) = (size.width as i32, size.height as i32);
-    if w <= 0 || h <= 0 {
+    let scale = win.scale_factor().map_err(|e| e.to_string())?;
+    let pos = win.outer_position().map_err(|e| e.to_string())?.to_logical::<f64>(scale);
+    let size = win.outer_size().map_err(|e| e.to_string())?.to_logical::<f64>(scale);
+    if size.width <= 0.0 || size.height <= 0.0 {
         return Err("empty".into());
     }
-    let mut buf = vec![0u8; (w * h * 4) as usize];
-    unsafe {
-        let screen = GetDC(None);
-        let mem = CreateCompatibleDC(screen);
-        let bmp = CreateCompatibleBitmap(screen, w, h);
-        let old = SelectObject(mem, bmp);
-        let ok = BitBlt(mem, 0, 0, w, h, screen, pos.x, pos.y, SRCCOPY).is_ok();
-        let mut bi = BITMAPINFO {
-            bmiHeader: BITMAPINFOHEADER {
-                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-                biWidth: w,
-                biHeight: -h,
-                biPlanes: 1,
-                biBitCount: 32,
-                biCompression: BI_RGB.0,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        if ok {
-            GetDIBits(mem, bmp, 0, h as u32, Some(buf.as_mut_ptr() as _), &mut bi, DIB_RGB_COLORS);
-        }
-        SelectObject(mem, old);
-        let _ = DeleteObject(bmp);
-        let _ = DeleteDC(mem);
-        ReleaseDC(None, screen);
-        if !ok {
-            return Err("capture failed".into());
-        }
-    }
-    let mut rgb = Vec::with_capacity((w * h * 3) as usize);
-    for px in buf.chunks_exact(4) {
-        rgb.extend_from_slice(&[px[2], px[1], px[0]]);
-    }
-    let mut out = Vec::new();
-    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 86)
-        .encode(&rgb, w as u32, h as u32, image::ExtendedColorType::Rgb8)
-        .map_err(|e| e.to_string())?;
-    Ok(format!("data:image/jpeg;base64,{}", STANDARD.encode(&out)))
+    let path = std::env::temp_dir().join(format!("needlex-backdrop-{}.jpg", std::process::id()));
+    crate::helper::snap(pos.x, pos.y, size.width, size.height, &path)?;
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string());
+    let _ = std::fs::remove_file(&path);
+    Ok(format!("data:image/jpeg;base64,{}", STANDARD.encode(bytes?)))
 }

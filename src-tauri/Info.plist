@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>LSUIElement</key>
+  <true/>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>NeedleX reads the song that is playing in Spotify and Apple Music and sends play, pause, next and previous to them.</string>
+  <key>NSAudioCaptureUsageDescription</key>
+  <string>NeedleX measures how loud your Mac's sound output is to animate the visualizer and beat glow. Nothing is recorded or saved.</string>
+  <key>NSLocationUsageDescription</key>
+  <string>NeedleX shows the weather where you are in the island. Only your rough location is used, to look up the forecast.</string>
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>NeedleX shows the weather where you are in the island. Only your rough location is used, to look up the forecast.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>NeedleX shows today's events from your calendars in the island. They stay on your Mac.</string>
+  <key>NSCalendarsUsageDescription</key>
+  <string>NeedleX shows today's events from your calendars in the island. They stay on your Mac.</string>
+  <key>NSScreenCaptureUsageDescription</key>
+  <string>NeedleX looks at the area behind the island to draw its liquid-glass effect. Nothing is recorded or saved.</string>
+</dict>
+</plist>

@@ -1,36 +1,33 @@
-//! Opens the full-screen view automatically when the PC has been idle (no
-//! mouse/keyboard input) for the chosen number of minutes while music plays.
-//! It stays out of the way of games, full-screen video and presentations.
+//! Opens the full-screen view automatically when the Mac has been idle (no
+//! mouse / keyboard / trackpad input) for the chosen number of minutes while
+//! music plays. It stays out of the way of full-screen video, presentations,
+//! video calls and the lock screen.
 
+use std::process::Command;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
-use windows::Win32::System::SystemInformation::GetTickCount;
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
-use windows::Win32::UI::Shell::{
-    SHQueryUserNotificationState, QUNS_BUSY, QUNS_NOT_PRESENT, QUNS_PRESENTATION_MODE,
-    QUNS_RUNNING_D3D_FULL_SCREEN,
-};
 
-use crate::AppState;
+use crate::{mac, AppState};
 
 fn idle_ms() -> u64 {
-    let mut li = LASTINPUTINFO { cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32, dwTime: 0 };
-    unsafe {
-        if !GetLastInputInfo(&mut li).as_bool() {
-            return 0;
-        }
-        GetTickCount().wrapping_sub(li.dwTime) as u64
-    }
+    (mac::idle_secs().max(0.0) * 1000.0) as u64
 }
 
-/// false while a game / full-screen video / presentation / lock screen is up
+/// false while something keeps the display awake on purpose (video players,
+/// Keynote / PowerPoint slideshows, video calls) or the screen is locked.
 fn screen_is_free() -> bool {
-    match unsafe { SHQueryUserNotificationState() } {
-        Ok(s) => !(s == QUNS_BUSY || s == QUNS_RUNNING_D3D_FULL_SCREEN || s == QUNS_PRESENTATION_MODE || s == QUNS_NOT_PRESENT),
-        Err(_) => true,
+    if mac::screen_locked() {
+        return false;
     }
+    let Ok(out) = Command::new("/usr/bin/pmset").args(["-g", "assertions"]).output() else { return true };
+    let text = String::from_utf8_lossy(&out.stdout);
+    // summary lines look like "   PreventUserIdleDisplaySleep    1"
+    !text.lines().any(|l| {
+        let mut it = l.split_whitespace();
+        it.next() == Some("PreventUserIdleDisplaySleep") && it.next().map(|n| n != "0").unwrap_or(false)
+    })
 }
 
 pub fn spawn(app: AppHandle) {

@@ -24,6 +24,7 @@ function islandDemo(q) {
     setTimeout(() => {
       if (v === 'lyrics') { S.lyricsOpen = true; }
       if (v !== 'peek') { S.peekUntil = 0; h['island:hover']?.({ payload: true }); }
+      if (q.get('page')) setTimeout(() => setPage(q.get('page')), 400);
     }, 300);
   }, 50);
   return {
@@ -31,6 +32,19 @@ function islandDemo(q) {
       if (cmd === 'capture_backdrop') return desk;
       if (cmd === 'fetch_lyrics') return { found: true, instrumental: false, plain: null, synced: [{ time: 58000, text: 'All I know is this' }, { time: 62000, text: 'all I know, all I know' }, { time: 66000, text: 'Every time I ride with you' }] };
       if (cmd === 'get_settings') return { floating: false, liveLyrics: true, hideIdle: true, glow: true };
+      if (cmd === 'get_weather') {
+        const hrs = [[16, 26, 2, 10], [17, 25, 3, 20], [18, 24, 61, 60], [19, 23, 61, 70], [20, 22, 3, 30], [21, 21, 2, 10]];
+        return { city: 'Bengaluru', temp: 26, code: 3, isDay: true, high: 27, low: 19, now: '2026-11-15T15:45',
+          hours: hrs.map(([hh, t, c, r]) => ({ time: `2026-11-15T${hh}:00`, temp: t, code: c, isDay: hh < 18, rain: r })) };
+      }
+      if (cmd === 'get_calendar') {
+        const d = new Date(); const at = (h, m) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m).getTime();
+        return [
+          { title: 'Design review', start: at(17, 0), end: at(18, 0), allDay: false, color: '#ff9f0a' },
+          { title: 'Gym', start: at(19, 30), end: at(20, 30), allDay: false, color: '#30d158' },
+          { title: 'Call with Mom', start: at(21, 0), end: at(21, 30), allDay: false, color: '#0a84ff' },
+        ];
+      }
       return null;
     },
     listen: (ev, fn) => { h[ev] = fn; },
@@ -89,6 +103,7 @@ const S = {
   snapOk: false,
   snapping: null,
   wantHover: false,
+  page: 'player', // expanded island: 'player' | 'weather' | 'calendar'
 };
 
 // ------------------------------------------------------------ helpers
@@ -176,8 +191,9 @@ function extractColor(src) {
 // ------------------------------------------------------------ view / layout
 
 function computeView() {
-  if (!S.track) return S.hover || !S.settings.hideIdle ? 'idle' : 'hidden';
-  if (S.hover) return S.lyricsOpen ? 'lyrics' : 'expanded';
+  // with nothing playing, hovering opens the weather and calendar pages
+  if (!S.track) return S.hover ? 'expanded' : S.settings.hideIdle ? 'hidden' : 'idle';
+  if (S.hover) return S.lyricsOpen && curPage() === 'player' ? 'lyrics' : 'expanded';
   if (performance.now() < S.peekUntil) return 'peek';
   return 'compact';
 }
@@ -197,6 +213,12 @@ function render() {
   island.style.setProperty('--r', r + 'px');
   island.style.setProperty('--top', top + 'px');
   island.dataset.view = v === 'lyrics' ? 'expanded' : v;
+  island.dataset.page = curPage();
+  const ps = pages();
+  $$('.pager i').forEach((d) => {
+    d.classList.toggle('on', d.dataset.page === curPage());
+    d.classList.toggle('off', !ps.includes(d.dataset.page));
+  });
   island.classList.toggle('lyrics-open', v === 'lyrics');
   const glassy = GLASS_VIEWS.has(v) && S.snapOk;
   island.classList.toggle('glassy', glassy);
@@ -619,6 +641,8 @@ function scheduleExpand(delay) {
     if (!S.wantHover || S.edge || S.drag) return;
     S.hover = true;
     render();
+    if (curPage() === 'weather') loadWeather();
+    if (curPage() === 'calendar') loadCalendar();
   }, delay);
 }
 
@@ -694,6 +718,190 @@ function frame(t) {
   requestAnimationFrame(frame);
 }
 
+// ------------------------------------------------------------ pages: player / weather / calendar
+
+const PAGES = ['player', 'weather', 'calendar'];
+function pages() { return S.track ? PAGES : PAGES.slice(1); }
+function curPage() { const ps = pages(); return ps.includes(S.page) ? S.page : ps[0]; }
+function setPage(p) {
+  S.page = p;
+  render();
+  if (curPage() === 'weather') loadWeather();
+  if (curPage() === 'calendar') loadCalendar();
+}
+$$('.pager i').forEach((d) => d.addEventListener('click', (e) => { e.stopPropagation(); setPage(d.dataset.page); }));
+
+// two-finger swipe sideways: one page per gesture (momentum is ignored)
+let swipeAcc = 0, swipeLock = false, swipeEndT = 0;
+island.addEventListener('wheel', (e) => {
+  if (S.view !== 'expanded' || Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+  e.preventDefault();
+  clearTimeout(swipeEndT);
+  swipeEndT = setTimeout(() => { swipeLock = false; swipeAcc = 0; }, 220);
+  if (swipeLock) return;
+  swipeAcc += e.deltaX;
+  if (Math.abs(swipeAcc) < 40) return;
+  const ps = pages();
+  const i = ps.indexOf(curPage());
+  const j = Math.max(0, Math.min(ps.length - 1, i + (swipeAcc > 0 ? 1 : -1)));
+  swipeLock = true;
+  if (j !== i) setPage(ps[j]);
+}, { passive: false });
+
+// ---- weather icons (colours like the system's)
+const WX_ICONS = {
+  sun: '<circle cx="12" cy="12" r="4.6" fill="#ffd60a"/><g stroke="#ffd60a" stroke-width="2" stroke-linecap="round"><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></g>',
+  moon: '<path d="M14.5 3.2a8.8 8.8 0 1 0 6.3 12.6A7.2 7.2 0 0 1 14.5 3.2z" fill="#e5e5ea"/>',
+  cloud: '<path d="M7 19h10.2a4.3 4.3 0 0 0 .6-8.56A6.2 6.2 0 0 0 5.9 9.6 4.75 4.75 0 0 0 7 19z" fill="#e5e7eb"/>',
+  partSun: '<circle cx="8.5" cy="8.5" r="3.6" fill="#ffd60a"/><g stroke="#ffd60a" stroke-width="1.7" stroke-linecap="round"><path d="M8.5 1.8v1.4M1.8 8.5h1.4M3.8 3.8l1 1M13.2 3.8l-1 1M3.8 13.2l1-1"/></g><path d="M9 20h9.2a3.8 3.8 0 0 0 .5-7.57 5.4 5.4 0 0 0-10.3-.9A4.2 4.2 0 0 0 9 20z" fill="#e5e7eb"/>',
+  partMoon: '<path d="M10.2 2.6a5.6 5.6 0 1 0 4 8A4.6 4.6 0 0 1 10.2 2.6z" fill="#e5e5ea"/><path d="M9 20h9.2a3.8 3.8 0 0 0 .5-7.57 5.4 5.4 0 0 0-10.3-.9A4.2 4.2 0 0 0 9 20z" fill="#d1d5db"/>',
+  rain: '<path d="M7 15h10.2a4.3 4.3 0 0 0 .6-8.56A6.2 6.2 0 0 0 5.9 5.6 4.75 4.75 0 0 0 7 15z" fill="#d1d5db"/><g stroke="#64b5ff" stroke-width="1.9" stroke-linecap="round"><path d="M8.5 17.5l-1 3M12.5 17.5l-1 3M16.5 17.5l-1 3"/></g>',
+  snow: '<path d="M7 15h10.2a4.3 4.3 0 0 0 .6-8.56A6.2 6.2 0 0 0 5.9 5.6 4.75 4.75 0 0 0 7 15z" fill="#d1d5db"/><g fill="#fff"><circle cx="8" cy="19" r="1.3"/><circle cx="12" cy="20.5" r="1.3"/><circle cx="16" cy="19" r="1.3"/></g>',
+  storm: '<path d="M7 15h10.2a4.3 4.3 0 0 0 .6-8.56A6.2 6.2 0 0 0 5.9 5.6 4.75 4.75 0 0 0 7 15z" fill="#9ca3af"/><path d="M12.6 13.5l-3 5h2.6l-1.2 4.3 4.4-6h-2.7l1.6-3.3z" fill="#ffd60a"/>',
+  fog: '<g stroke="#d1d5db" stroke-width="2" stroke-linecap="round"><path d="M4 8h16M3 12h18M5 16h14M8 20h8"/></g>',
+};
+function wxKind(code, day) {
+  if (code <= 1) return day ? 'sun' : 'moon';
+  if (code === 2) return day ? 'partSun' : 'partMoon';
+  if (code === 3) return 'cloud';
+  if (code === 45 || code === 48) return 'fog';
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snow';
+  if (code >= 95) return 'storm';
+  return 'rain';
+}
+function wxText(code) {
+  if (code === 0) return 'Clear';
+  if (code === 1) return 'Mostly clear';
+  if (code === 2) return 'Partly cloudy';
+  if (code === 3) return 'Cloudy';
+  if (code === 45 || code === 48) return 'Foggy';
+  if (code >= 51 && code <= 57) return 'Drizzle';
+  if (code === 66 || code === 67) return 'Freezing rain';
+  if (code >= 61 && code <= 65) return 'Rain';
+  if (code >= 71 && code <= 77) return 'Snow';
+  if (code >= 80 && code <= 82) return 'Showers';
+  if (code === 85 || code === 86) return 'Snow showers';
+  if (code >= 95) return 'Thunderstorms';
+  return '';
+}
+const wxSvg = (code, day) => `<svg viewBox="0 0 24 24" aria-hidden="true">${WX_ICONS[wxKind(code, day)]}</svg>`;
+const wetCode = (c) => (c >= 51 && c <= 67) || (c >= 80 && c <= 82) || c >= 95;
+function hourOf(iso) { // "2026-11-15T18:00" → a local Date
+  const m = /^(\d+)-(\d+)-(\d+)T(\d+)/.exec(iso || '');
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4]) : new Date();
+}
+const hourLabel = (iso) => hourOf(iso).toLocaleTimeString([], { hour: 'numeric' }).replace(/\s/g, '');
+
+const WX = { data: null, err: '', at: 0, loading: false };
+async function loadWeather(force) {
+  if (WX.loading || (!force && WX.data && Date.now() - WX.at < 10 * 60e3)) { renderWeather(); return; }
+  WX.loading = true;
+  renderWeather();
+  try { WX.data = await invoke('get_weather'); WX.err = ''; WX.at = Date.now(); }
+  catch (e) { WX.err = String(e || 'error'); }
+  WX.loading = false;
+  renderWeather();
+}
+function renderWeather() {
+  const pg = $('.pg-weather');
+  const d = WX.data;
+  let msg = '';
+  if (!d) {
+    if (WX.err.includes('denied')) msg = 'Turn on Location Services for NeedleX in System Settings → Privacy & Security to see the weather here.';
+    else if (WX.err) msg = "Couldn't load the weather right now.";
+    else msg = 'Looking up the weather…';
+  }
+  pg.classList.toggle('msg', !!msg);
+  $('.w-msg').textContent = msg;
+  if (!d) return;
+  $('.w-ico').innerHTML = wxSvg(d.code, d.isDay);
+  $('.w-deg').textContent = `${Math.round(d.temp)}°`;
+  // like Needle: when rain is coming, say when
+  let sum = wxText(d.code);
+  if (!wetCode(d.code)) {
+    const wet = d.hours.find((h) => h.rain >= 50 || wetCode(h.code));
+    if (wet) sum = `${(wet.code >= 71 && wet.code <= 86 && !wetCode(wet.code)) ? 'Snow' : 'Rain'} at ${hourOf(wet.time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+  }
+  $('.w-sum').textContent = sum;
+  $('.w-range').textContent = `↑${Math.round(d.high)}°  ↓${Math.round(d.low)}°`;
+  $('.w-city').innerHTML = d.city ? '<svg viewBox="0 0 24 24"><path d="M21 3 3 10.5l7.4 2.1L12.5 20z" fill="currentColor"/></svg>' : '';
+  $('.w-city').append(d.city || '');
+  $('.w-hours').innerHTML = d.hours.slice(0, 6).map((h) => `
+    <div class="w-h"><span class="t">${hourLabel(h.time)}</span>${wxSvg(h.code, h.isDay)}<span class="d">${Math.round(h.temp)}°</span><span class="r">${h.rain >= 30 ? Math.round(h.rain) + '%' : ''}</span></div>`).join('');
+}
+setInterval(() => { if (S.view === 'expanded' && curPage() === 'weather') loadWeather(); }, 60e3);
+
+// ---- calendar
+const CAL = { events: null, err: '', at: 0, loading: false };
+async function loadCalendar(force) {
+  renderCalendar();
+  if (CAL.loading || (!force && CAL.events && Date.now() - CAL.at < 2 * 60e3)) return;
+  CAL.loading = true;
+  try { CAL.events = await invoke('get_calendar'); CAL.err = ''; CAL.at = Date.now(); }
+  catch (e) { CAL.err = String(e || 'error'); }
+  CAL.loading = false;
+  renderCalendar();
+}
+const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+const timeOf = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+function renderCalendar() {
+  const now = new Date();
+  // month grid, weeks starting on Sunday
+  $('.cm-title').textContent = now.toLocaleDateString([], { month: 'long' });
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const start = new Date(first);
+  start.setDate(1 - first.getDay());
+  const busy = new Set((CAL.events || []).map((e) => new Date(e.start).toDateString()));
+  let html = ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((w) => `<span class="wd">${w}</span>`).join('');
+  const weeks = Math.ceil((first.getDay() + new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()) / 7);
+  for (let i = 0; i < weeks * 7; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    const cls = ['d'];
+    if (d.getMonth() !== now.getMonth()) cls.push('other');
+    if (sameDay(d, now)) cls.push('today');
+    else if (busy.has(d.toDateString())) cls.push('busy');
+    html += `<span class="${cls.join(' ')}">${d.getDate()}</span>`;
+  }
+  $('.cm-grid').innerHTML = html;
+
+  // today's events (the ones not over yet), else tomorrow's first
+  const list = $('.ce-list');
+  $('.ce-day').textContent = now.toLocaleDateString([], { weekday: 'long', day: 'numeric' });
+  list.innerHTML = '';
+  if (CAL.err) {
+    list.innerHTML = `<div class="ce-empty">${CAL.err.includes('denied')
+      ? 'Allow NeedleX to see your calendars in System Settings → Privacy & Security → Calendars.'
+      : "Couldn't read your calendars."}</div>`;
+    return;
+  }
+  if (!CAL.events) { list.innerHTML = '<div class="ce-empty">Loading…</div>'; return; }
+  const t = now.getTime();
+  const today = CAL.events.filter((e) => sameDay(new Date(e.start), now) || (e.start < t && e.end > t));
+  const left = today.filter((e) => e.end > t);
+  const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
+  const next = CAL.events.filter((e) => sameDay(new Date(e.start), tomorrow) && !e.allDay)[0];
+  const row = (e, label) => {
+    const el = document.createElement('div');
+    el.className = 'ev' + (!e.allDay && e.start <= t && e.end > t ? ' now' : '');
+    el.style.setProperty('--c', e.color);
+    el.innerHTML = '<span class="bar"></span><div class="tx"><div class="ti"></div><div class="tm"></div></div>';
+    el.querySelector('.ti').textContent = e.title || 'Event';
+    el.querySelector('.tm').textContent = label || (e.allDay ? 'All day' : `${timeOf(e.start)} – ${timeOf(e.end)}`);
+    list.appendChild(el);
+  };
+  left.slice(0, 3).forEach((e) => row(e));
+  if (!left.length) {
+    list.innerHTML = `<div class="ce-empty">${today.length ? 'No more events today' : 'No events today'}</div>`;
+    if (next) row(next, `Tomorrow · ${timeOf(next.start)}`);
+  } else if (left.length > 3) {
+    const more = document.createElement('div');
+    more.className = 'ce-empty';
+    more.textContent = `+${left.length - 3} more`;
+    list.appendChild(more);
+  }
+}
+
 // ------------------------------------------------------------ idle clock
 
 function tickClock() {
@@ -727,6 +935,7 @@ listen('island:hover', (e) => {
       if (S.scrubbing || S.drag) { S.hoverT = setTimeout(leave, 200); return; }
       S.hover = false;
       render();
+      setTimeout(() => { if (!S.hover) { S.page = 'player'; render(); } }, 400);
     }, 260);
   }
 });

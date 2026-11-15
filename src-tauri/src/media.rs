@@ -1,26 +1,51 @@
-//! Watches Windows' System Media Transport Controls (SMTC).
+//! Follows what is playing on the Mac.
 //!
-//! Every app that shows up in the Windows volume / media flyout reports here:
-//! Spotify, Apple Music, Chrome/Edge/Firefox/Brave/Opera tabs (YouTube Music,
-//! Spotify Web, SoundCloud, YouTube...), Media Player, VLC, foobar2000, etc.
+//! macOS has no public "now playing" API for other apps, so this talks to the
+//! players through their AppleScript dictionaries (the same thing Shortcuts
+//! and Raycast use). macOS asks once per player whether NeedleX may control
+//! it. Supported: Spotify and Apple Music.
+//!
+//! A long-running `osascript` (see `media.js`) prints a JSON snapshot of every
+//! player 2-3 times a second; this worker picks the session to follow, turns it
+//! into `media:track` / `media:state` events and sends the playback commands.
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-use std::sync::mpsc::{Receiver, RecvTimeoutError};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::io::{BufRead, BufReader};
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use std::sync::atomic::Ordering;
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
+use std::time::{Duration, Instant};
 
 use base64::{engine::general_purpose::STANDARD, Engine};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager as _};
 
 use crate::AppState;
-use windows::Media::Control::{
-    GlobalSystemMediaTransportControlsSession as Session,
-    GlobalSystemMediaTransportControlsSessionManager as Manager,
-    GlobalSystemMediaTransportControlsSessionMediaProperties as Props,
-    GlobalSystemMediaTransportControlsSessionPlaybackStatus as Status,
-};
-use windows::Storage::Streams::{DataReader, IRandomAccessStreamReference};
+
+const POLLER_JS: &str = include_str!("media.js");
+
+/// Writes the artwork of Apple Music's current track to the file in argv[1].
+const MUSIC_ART_SCPT: &str = r#"on run argv
+  set outPath to item 1 of argv
+  tell application "Music"
+    if player state is stopped then return "none"
+    if (count of artworks of current track) is 0 then return "none"
+    set d to raw data of artwork 1 of current track
+  end tell
+  set f to open for access (POSIX file outPath) with write permission
+  try
+    set eof f to 0
+    write d to f
+    close access f
+  on error
+    try
+      close access f
+    end try
+    return "error"
+  end try
+  return "ok"
+end run
+"#;
 
 pub enum MediaCmd {
     Toggle,
@@ -28,6 +53,32 @@ pub enum MediaCmd {
     Prev,
     Seek(f64),
     Resend,
+    /// Fresh snapshot of all players from the poller.
+    Snapshot(Poll),
+    /// Artwork finished downloading for the track with this key.
+    Art { key: String, url: String },
+}
+
+#[derive(Deserialize, Clone, Default, Debug)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Session {
+    app: String,
+    name: String,
+    title: String,
+    artist: String,
+    album: String,
+    duration_ms: f64,
+    position_ms: f64,
+    playing: bool,
+    art_url: String,
+    can_seek: bool,
+}
+
+#[derive(Deserialize, Default, Debug)]
+#[serde(default)]
+pub struct Poll {
+    sessions: Vec<Session>,
+    denied: Vec<String>,
 }
 
 #[derive(Serialize, Clone, Default)]
@@ -55,135 +106,244 @@ pub struct PlayState {
     pub can_seek: bool,
 }
 
+/// Puts one of our helper scripts in the app's cache folder and returns its path.
+fn write_script(app: &AppHandle, name: &str, body: &str) -> PathBuf {
+    let dir = app
+        .path()
+        .app_cache_dir()
+        .unwrap_or_else(|_| std::env::temp_dir().join("NeedleX"));
+    let _ = std::fs::create_dir_all(&dir);
+    let p = dir.join(name);
+    if std::fs::read_to_string(&p).ok().as_deref() != Some(body) {
+        let _ = std::fs::write(&p, body);
+    }
+    p
+}
+
 pub fn spawn(app: AppHandle, rx: Receiver<MediaCmd>) {
+    let tx = app.state::<AppState>().media_tx.lock().unwrap().clone();
+    let poller = write_script(&app, "media-poller.js", POLLER_JS);
+    let art_script = write_script(&app, "music-artwork.applescript", MUSIC_ART_SCPT);
+    spawn_poller(poller, tx.clone());
+
     std::thread::spawn(move || {
-        unsafe {
-            let _ = windows::Win32::System::WinRT::RoInitialize(
-                windows::Win32::System::WinRT::RO_INIT_MULTITHREADED,
-            );
-        }
         let mut w = Worker {
             app,
-            mgr: None,
-            current_id: String::new(),
+            tx,
+            art_script,
+            current: String::new(),
+            sessions: Vec::new(),
+            denied: Vec::new(),
             track: Track::default(),
-            art_hash: 0,
-            art_checks: 0,
+            last_snapshot: Instant::now(),
         };
+        let debug = std::env::var_os("NEEDLEX_DEBUG").is_some();
+        let mut last_debug = String::new();
         loop {
-            match rx.recv_timeout(Duration::from_millis(400)) {
-                Ok(cmd) => {
-                    w.exec(cmd);
-                    w.tick();
+            match rx.recv_timeout(Duration::from_millis(1500)) {
+                Ok(MediaCmd::Snapshot(p)) => {
+                    if debug {
+                        let line = format!("{:?} denied={:?}", p.sessions.iter().map(|s| (&s.app, &s.title, &s.artist, s.playing, s.art_url.len())).collect::<Vec<_>>(), p.denied);
+                        if line != last_debug {
+                            eprintln!("[media] {line}");
+                            last_debug = line;
+                        }
+                    }
+                    w.last_snapshot = Instant::now();
+                    w.sessions = p.sessions;
+                    w.set_denied(p.denied);
+                    w.update();
                 }
-                Err(RecvTimeoutError::Timeout) => w.tick(),
+                Ok(MediaCmd::Art { key, url }) => {
+                    if debug {
+                        eprintln!("[media] artwork {} bytes for current={}", url.len(), key == w.track.key);
+                    }
+                    if key == w.track.key {
+                        w.track.art = Some(url);
+                        w.emit_track();
+                    }
+                }
+                Ok(MediaCmd::Resend) => w.emit_track(),
+                Ok(cmd) => w.exec(cmd),
+                Err(RecvTimeoutError::Timeout) => {
+                    // poller stuck or restarting: don't show a stale song forever
+                    if w.last_snapshot.elapsed() > Duration::from_secs(5) && !w.sessions.is_empty() {
+                        w.sessions.clear();
+                        w.update();
+                    }
+                }
                 Err(RecvTimeoutError::Disconnected) => break,
             }
         }
     });
 }
 
+/// Keeps one `osascript` poller running; restarts it if it ever exits.
+fn spawn_poller(script: PathBuf, tx: Sender<MediaCmd>) {
+    std::thread::spawn(move || loop {
+        let child = Command::new("/usr/bin/osascript")
+            .arg("-l")
+            .arg("JavaScript")
+            .arg(&script)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn();
+        if let Ok(mut c) = child {
+            if let Some(out) = c.stdout.take() {
+                for line in BufReader::new(out).lines() {
+                    let Ok(line) = line else { break };
+                    let Ok(p) = serde_json::from_str::<Poll>(&line) else { continue };
+                    if tx.send(MediaCmd::Snapshot(p)).is_err() {
+                        let _ = c.kill();
+                        return;
+                    }
+                }
+            }
+            let _ = c.kill();
+            let _ = c.wait();
+        }
+        std::thread::sleep(Duration::from_secs(2));
+    });
+}
+
 struct Worker {
     app: AppHandle,
-    mgr: Option<Manager>,
-    current_id: String,
+    tx: Sender<MediaCmd>,
+    art_script: PathBuf,
+    /// player we are following ("spotify" / "music")
+    current: String,
+    sessions: Vec<Session>,
+    denied: Vec<String>,
     track: Track,
-    art_hash: u64,
-    art_checks: u8,
+    last_snapshot: Instant,
 }
 
 impl Worker {
-    fn manager(&mut self) -> Option<&Manager> {
-        if self.mgr.is_none() {
-            self.mgr = Manager::RequestAsync().and_then(|op| op.get()).ok();
-        }
-        self.mgr.as_ref()
-    }
-
-    /// Prefer: the session we already follow if it is playing → any playing
-    /// session → the session we already follow → whatever Windows calls current.
-    fn pick_session(&mut self) -> Option<Session> {
-        let current_id = self.current_id.clone();
-        let mgr = self.manager()?;
-        let sessions = mgr.GetSessions().ok()?;
-        let n = sessions.Size().unwrap_or(0);
-        let mut first_playing: Option<Session> = None;
-        let mut same: Option<(Session, bool)> = None;
-        for i in 0..n {
-            let Ok(s) = sessions.GetAt(i) else { continue };
-            let id = s
-                .SourceAppUserModelId()
-                .map(|h| h.to_string())
-                .unwrap_or_default();
-            let playing = s
-                .GetPlaybackInfo()
-                .and_then(|p| p.PlaybackStatus())
-                .map(|st| st == Status::Playing)
-                .unwrap_or(false);
-            if id == current_id {
-                same = Some((s.clone(), playing));
-            }
-            if playing && first_playing.is_none() {
-                first_playing = Some(s);
-            }
-        }
-        if let Some((s, true)) = &same {
+    /// Prefer: the player we already follow if it is playing → any playing
+    /// player → the player we already follow → the first one.
+    fn pick(&self) -> Option<Session> {
+        let same = self.sessions.iter().find(|s| s.app == self.current);
+        if let Some(s) = same.filter(|s| s.playing) {
             return Some(s.clone());
         }
-        if first_playing.is_some() {
-            return first_playing;
+        if let Some(s) = self.sessions.iter().find(|s| s.playing) {
+            return Some(s.clone());
         }
-        if let Some((s, _)) = same {
-            return Some(s);
+        same.or_else(|| self.sessions.first()).cloned()
+    }
+
+    fn set_denied(&mut self, denied: Vec<String>) {
+        if denied != self.denied {
+            self.denied = denied.clone();
+            *self.app.state::<AppState>().denied.lock().unwrap() = denied;
+            crate::rebuild_menu(&self.app);
         }
-        mgr.GetCurrentSession().ok()
     }
 
     fn exec(&mut self, cmd: MediaCmd) {
-        if let MediaCmd::Resend = cmd {
-            self.emit_track();
-            return;
-        }
-        let Some(s) = self.pick_session() else { return };
-        let _ = (|| -> windows::core::Result<()> {
-            match cmd {
-                MediaCmd::Toggle => {
-                    s.TryTogglePlayPauseAsync()?.get()?;
-                }
-                MediaCmd::Next => {
-                    s.TrySkipNextAsync()?.get()?;
-                }
-                MediaCmd::Prev => {
-                    s.TrySkipPreviousAsync()?.get()?;
-                }
-                MediaCmd::Seek(ms) => {
-                    let start = s
-                        .GetTimelineProperties()
-                        .and_then(|t| t.StartTime())
-                        .map(|t| t.Duration)
-                        .unwrap_or(0);
-                    s.TryChangePlaybackPositionAsync(start + (ms * 10_000.0) as i64)?
-                        .get()?;
-                }
-                MediaCmd::Resend => {}
-            }
-            Ok(())
-        })();
+        let Some(s) = self.pick() else { return };
+        let target = match s.app.as_str() {
+            "spotify" => "Spotify",
+            "music" => "Music",
+            _ => return,
+        };
+        let stmt = match cmd {
+            MediaCmd::Toggle => "playpause".to_string(),
+            MediaCmd::Next => "next track".to_string(),
+            // Music's "back track" restarts the song first, like the media keys
+            MediaCmd::Prev if target == "Music" => "back track".to_string(),
+            MediaCmd::Prev => "previous track".to_string(),
+            MediaCmd::Seek(ms) => format!("set player position to {:.3}", (ms / 1000.0).max(0.0)),
+            _ => return,
+        };
+        let script = format!("tell application \"{target}\" to {stmt}");
+        std::thread::spawn(move || {
+            let _ = Command::new("/usr/bin/osascript")
+                .arg("-e")
+                .arg(script)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        });
     }
 
-    fn tick(&mut self) {
-        let result = match self.pick_session() {
-            Some(s) => self.update(&s),
-            None => Ok(false),
+    fn update(&mut self) {
+        let Some(s) = self.pick() else {
+            self.clear();
+            return;
         };
-        match result {
-            Ok(true) => {}
-            Ok(false) => self.clear(),
-            Err(_) => {
-                // Manager can go stale (e.g. explorer restart) – recreate next tick.
-                self.mgr = None;
-                self.clear();
-            }
+        self.current = s.app.clone();
+
+        let key = format!("{}\u{1f}{}\u{1f}{}\u{1f}{}", s.app, s.title, s.artist, s.album);
+        if key != self.track.key {
+            self.track = Track {
+                key: key.clone(),
+                title: s.title.clone(),
+                artist: s.artist.clone(),
+                album: s.album.clone(),
+                art: None,
+                source: s.app.clone(),
+                source_name: s.name.clone(),
+            };
+            self.emit_track();
+            self.fetch_art(&s, key);
+        }
+
+        let playing = s.playing;
+        self.app.state::<AppState>().playing.store(playing, Ordering::Relaxed);
+        let duration_ms = s.duration_ms.max(0.0);
+        let mut position_ms = s.position_ms.max(0.0);
+        if duration_ms > 0.0 {
+            position_ms = position_ms.min(duration_ms);
+        }
+        let state = PlayState {
+            active: true,
+            playing,
+            position_ms,
+            duration_ms,
+            has_timeline: duration_ms > 1000.0,
+            can_next: true,
+            can_prev: true,
+            can_seek: s.can_seek,
+        };
+        let _ = self.app.emit("media:state", state);
+    }
+
+    /// Player artwork as a data URL (Spotify hands out a 640 px cover URL;
+    /// Apple Music's artwork is exported through AppleScript).
+    fn fetch_art(&self, s: &Session, key: String) {
+        let tx = self.tx.clone();
+        if !s.art_url.is_empty() {
+            let http = self.app.state::<AppState>().http.clone();
+            let url = s.art_url.clone();
+            tauri::async_runtime::spawn(async move {
+                let Ok(r) = http.get(&url).send().await else { return };
+                let Ok(b) = r.bytes().await else { return };
+                if let Some(data) = data_url(&b) {
+                    let _ = tx.send(MediaCmd::Art { key, url: data });
+                }
+            });
+        } else if s.app == "music" {
+            let script = self.art_script.clone();
+            let out = std::env::temp_dir().join(format!("needlex-art-{}.img", std::process::id()));
+            std::thread::spawn(move || {
+                let ok = Command::new("/usr/bin/osascript")
+                    .arg(&script)
+                    .arg(&out)
+                    .stdin(Stdio::null())
+                    .stderr(Stdio::null())
+                    .output()
+                    .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "ok")
+                    .unwrap_or(false);
+                if ok {
+                    if let Some(data) = std::fs::read(&out).ok().as_deref().and_then(data_url) {
+                        let _ = tx.send(MediaCmd::Art { key, url: data });
+                    }
+                }
+                let _ = std::fs::remove_file(&out);
+            });
         }
     }
 
@@ -192,125 +352,8 @@ impl Worker {
             self.track = Track::default();
             self.emit_track();
         }
-        self.app.state::<AppState>().playing.store(false, std::sync::atomic::Ordering::Relaxed);
+        self.app.state::<AppState>().playing.store(false, Ordering::Relaxed);
         let _ = self.app.emit("media:state", PlayState::default());
-    }
-
-    /// Returns Ok(false) when the session has no usable metadata.
-    fn update(&mut self, s: &Session) -> windows::core::Result<bool> {
-        let id = s.SourceAppUserModelId()?.to_string();
-        self.current_id = id.clone();
-
-        let props = s.TryGetMediaPropertiesAsync()?.get()?;
-        let title = props.Title()?.to_string();
-        let mut artist = props.Artist()?.to_string();
-        if artist.is_empty() {
-            artist = props.AlbumArtist().map(|a| a.to_string()).unwrap_or_default();
-        }
-        let album = props.AlbumTitle()?.to_string();
-        if title.trim().is_empty() {
-            return Ok(false);
-        }
-
-        let key = format!("{id}\u{1f}{title}\u{1f}{artist}\u{1f}{album}");
-        if key != self.track.key {
-            self.track = Track {
-                key,
-                title,
-                artist,
-                album,
-                art: None,
-                source: id.clone(),
-                source_name: friendly_name(&id),
-            };
-            self.art_hash = 0;
-            // Browsers sometimes publish the artwork a moment after the title,
-            // so keep re-checking the thumbnail for a few seconds.
-            self.art_checks = 10;
-            self.check_art(&props);
-            self.emit_track();
-        } else if self.art_checks > 0 {
-            self.art_checks -= 1;
-            if self.check_art(&props) {
-                self.emit_track();
-            }
-        }
-
-        let info = s.GetPlaybackInfo()?;
-        let playing = info.PlaybackStatus()? == Status::Playing;
-        self.app.state::<AppState>().playing.store(playing, std::sync::atomic::Ordering::Relaxed);
-        let (can_next, can_prev, can_seek) = info
-            .Controls()
-            .map(|c| {
-                (
-                    c.IsNextEnabled().unwrap_or(true),
-                    c.IsPreviousEnabled().unwrap_or(true),
-                    c.IsPlaybackPositionEnabled().unwrap_or(false),
-                )
-            })
-            .unwrap_or((true, true, false));
-
-        let tl = s.GetTimelineProperties()?;
-        let start = tl.StartTime()?.Duration;
-        let end = tl.EndTime()?.Duration;
-        let pos = tl.Position()?.Duration;
-        let updated = tl.LastUpdatedTime()?.UniversalTime;
-
-        let duration_ms = (end - start).max(0) as f64 / 10_000.0;
-        let mut position_ms = (pos - start).max(0) as f64 / 10_000.0;
-        // SMTC gives a position snapshot taken at `updated`; extrapolate to now.
-        if playing && updated > 0 {
-            let delta = now_filetime() - updated;
-            if delta > 0 && delta < 36_000_000_000 {
-                position_ms += delta as f64 / 10_000.0;
-            }
-        }
-        if duration_ms > 0.0 {
-            position_ms = position_ms.clamp(0.0, duration_ms);
-        }
-
-        let state = PlayState {
-            active: true,
-            playing,
-            position_ms,
-            duration_ms,
-            has_timeline: duration_ms > 1000.0,
-            can_next,
-            can_prev,
-            can_seek,
-        };
-        let _ = self.app.emit("media:state", state);
-        Ok(true)
-    }
-
-    fn check_art(&mut self, props: &Props) -> bool {
-        let Ok(thumb) = props.Thumbnail() else { return false };
-        let Ok(bytes) = read_stream(&thumb) else { return false };
-        if bytes.len() < 64 {
-            return false;
-        }
-        let mut h = DefaultHasher::new();
-        bytes.hash(&mut h);
-        let h = h.finish();
-        if h == self.art_hash {
-            return false;
-        }
-        self.art_hash = h;
-        let mime = if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
-            "image/png"
-        } else if bytes.starts_with(&[0xFF, 0xD8]) {
-            "image/jpeg"
-        } else if bytes.starts_with(b"RIFF") {
-            "image/webp"
-        } else if bytes.starts_with(b"GIF") {
-            "image/gif"
-        } else if bytes.starts_with(b"BM") {
-            "image/bmp"
-        } else {
-            "image/png"
-        };
-        self.track.art = Some(format!("data:{mime};base64,{}", STANDARD.encode(&bytes)));
-        true
     }
 
     fn emit_track(&self) {
@@ -318,66 +361,22 @@ impl Worker {
     }
 }
 
-fn read_stream(r: &IRandomAccessStreamReference) -> windows::core::Result<Vec<u8>> {
-    let stream = r.OpenReadAsync()?.get()?;
-    let size = stream.Size()? as u32;
-    if size == 0 {
-        return Ok(vec![]);
+fn data_url(bytes: &[u8]) -> Option<String> {
+    if bytes.len() < 64 {
+        return None;
     }
-    let input = stream.GetInputStreamAt(0)?;
-    let reader = DataReader::CreateDataReader(&input)?;
-    reader.LoadAsync(size)?.get()?;
-    let mut buf = vec![0u8; size as usize];
-    reader.ReadBytes(&mut buf)?;
-    Ok(buf)
-}
-
-/// Current time as a Windows FILETIME (100 ns ticks since 1601-01-01 UTC).
-fn now_filetime() -> i64 {
-    let unix_100ns = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos() / 100)
-        .unwrap_or(0) as i64;
-    unix_100ns + 116_444_736_000_000_000
-}
-
-fn friendly_name(id: &str) -> String {
-    let l = id.to_lowercase();
-    let known = [
-        ("spotify", "Spotify"),
-        ("applemusic", "Apple Music"),
-        ("appleinc", "Apple Music"),
-        ("itunes", "iTunes"),
-        ("msedge", "Edge"),
-        ("chrome", "Chrome"),
-        ("firefox", "Firefox"),
-        ("brave", "Brave"),
-        ("opera", "Opera"),
-        ("vivaldi", "Vivaldi"),
-        ("arc", "Arc"),
-        ("zunemusic", "Media Player"),
-        ("zunevideo", "Movies & TV"),
-        ("vlc", "VLC"),
-        ("foobar", "foobar2000"),
-        ("musicbee", "MusicBee"),
-        ("aimp", "AIMP"),
-        ("tidal", "TIDAL"),
-        ("deezer", "Deezer"),
-        ("amazon", "Amazon Music"),
-        ("youtube", "YouTube Music"),
-        ("soundcloud", "SoundCloud"),
-    ];
-    for (needle, name) in known {
-        if l.contains(needle) {
-            return name.to_string();
-        }
-    }
-    let base = id.split('!').next_back().unwrap_or(id);
-    let base = base.trim_end_matches(".exe").trim_end_matches(".EXE");
-    let base = base.rsplit(['\\', '/']).next().unwrap_or(base);
-    if base.is_empty() {
-        "Media".into()
+    let mime = if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+        "image/png"
+    } else if bytes.starts_with(&[0xFF, 0xD8]) {
+        "image/jpeg"
+    } else if bytes.starts_with(b"RIFF") {
+        "image/webp"
+    } else if bytes.starts_with(b"GIF") {
+        "image/gif"
+    } else if bytes.starts_with(b"MM\0*") || bytes.starts_with(b"II*\0") {
+        "image/tiff"
     } else {
-        base.to_string()
-    }
+        "image/jpeg"
+    };
+    Some(format!("data:{mime};base64,{}", STANDARD.encode(bytes)))
 }

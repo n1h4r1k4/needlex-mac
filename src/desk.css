@@ -1,0 +1,173 @@
+@font-face { font-family: "Lyric Sans"; src: url("fonts/inter.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: block; }
+
+:root {
+  --U: min(30vh, 25vw);     /* size of the cover */
+  --light: 236, 226, 232;   /* bright colour of the cover (record-player lamp) */
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; width: 100%; height: 100%; overflow: hidden;
+  background: transparent; color: #fff;
+  font-family: "Lyric Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  user-select: none; -webkit-user-select: none; cursor: default;
+  -webkit-font-smoothing: antialiased;
+}
+img { -webkit-user-drag: none; display: block; }
+
+/* ------------------------------------------------------------ the object */
+
+#obj {
+  --level: 0;
+  position: absolute; left: 0; top: 0;  /* placed by desk.js */
+  width: var(--W); height: var(--H);
+  opacity: 0; transform: scale(.94) translateY(1.5vh);
+  transition: opacity 1.1s ease, transform 1.1s cubic-bezier(.2, 1.1, .3, 1);
+  cursor: grab;
+}
+#obj.show { opacity: 1; transform: none; }
+#obj.dragging { cursor: grabbing; }
+#obj > * { position: absolute; }
+#obj .deck, #obj .disc, #obj .arm, #obj .glow { display: none; }
+
+/* the record */
+.disc { width: var(--D); height: var(--D); border-radius: 50%; }
+.disc .spin {
+  position: absolute; inset: 0; border-radius: 50%;
+  background:
+    radial-gradient(circle, transparent 0 33%, #0a0a0c 33.5% 35.5%, transparent 36%),
+    repeating-radial-gradient(circle, #0f0f11 0 .9px, #1c1c20 1.3px, #0d0d0f 1.9px),
+    #0e0e10;
+  box-shadow: 0 calc(var(--U) * .03) calc(var(--U) * .08) rgba(0, 0, 0, .55), inset 0 0 0 calc(var(--D) * .012) #060607;
+  animation: spin 1.8s linear infinite;   /* 33⅓ rpm */
+  animation-play-state: paused;
+}
+body.playing .disc .spin { animation-play-state: running; }
+.disc .label {
+  position: absolute; left: 33%; top: 33%; width: 34%; height: 34%;
+  border-radius: 50%; object-fit: cover;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .45);
+}
+.disc .hole {
+  position: absolute; left: 48.8%; top: 48.8%; width: 2.4%; height: 2.4%;
+  border-radius: 50%; background: #050506;
+}
+/* the light on the grooves doesn't turn with the record */
+.disc .sheen {
+  position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(from 25deg, transparent 0deg, rgba(255, 255, 255, .14) 22deg, transparent 46deg,
+    transparent 180deg, rgba(255, 255, 255, .10) 204deg, transparent 228deg);
+  -webkit-mask: radial-gradient(circle, transparent 0 35%, #000 37%);
+  mask: radial-gradient(circle, transparent 0 35%, #000 37%);
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* the sleeve (or just the cover) */
+.sleeve {
+  width: var(--S); height: var(--S); overflow: hidden;
+  border-radius: calc(var(--S) * .012);
+  box-shadow: 0 calc(var(--U) * .05) calc(var(--U) * .12) rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 255, 255, .06);
+}
+.sleeve img { width: 100%; height: 100%; object-fit: cover; }
+.sleeve::after {  /* card-stock sheen */
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(125deg, rgba(255, 255, 255, .17), transparent 36%, transparent 72%, rgba(0, 0, 0, .14));
+}
+
+/* title · artist under the object, readable on any wallpaper */
+.caption {
+  left: -40%; right: -40%; top: calc(100% + 2.4vh);
+  text-align: center; pointer-events: none;
+  text-shadow: 0 1px 14px rgba(0, 0, 0, .6), 0 1px 3px rgba(0, 0, 0, .45);
+}
+.caption .title, .caption .artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.caption .title { font-size: 2.2vh; font-weight: 700; letter-spacing: -.01em; }
+.caption .artist { font-size: 1.7vh; font-weight: 500; opacity: .8; margin-top: .4vh; }
+
+/* ------------------------------------------------------------ turntable */
+
+/* the sleeve leans beside the record player */
+#obj.look-turntable { --W: calc(var(--U) * 2.2); --H: calc(var(--U) * 1.22); --D: var(--U); --S: calc(var(--U) * .9); }
+.look-turntable .sleeve { left: 0; top: calc(var(--U) * .27); transform: rotate(-4deg); z-index: 0; }
+#obj.look-turntable .deck {
+  display: block; z-index: 1;
+  left: calc(var(--U) * .72); top: 0; width: calc(var(--U) * 1.48); height: calc(var(--U) * 1.22);
+  border-radius: calc(var(--U) * .07);
+  background: linear-gradient(160deg, #3b3b40 0%, #242428 42%, #18181b 100%);
+  box-shadow: 0 calc(var(--U) * .05) calc(var(--U) * .14) rgba(0, 0, 0, .55),
+    inset 0 1px 0 rgba(255, 255, 255, .16), inset 0 -2px 0 rgba(0, 0, 0, .45);
+}
+.deck > i { position: absolute; border-radius: 50%; }
+.deck .knob {
+  right: 7%; bottom: 8%; width: 10%; aspect-ratio: 1;
+  background: radial-gradient(circle at 35% 30%, #77777d, #2b2b2f 70%);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, .55);
+}
+.deck .lamp {
+  right: 21%; bottom: 12%; width: 2.4%; aspect-ratio: 1;
+  background: #3b2626; transition: background .6s, box-shadow .6s;
+}
+body.playing .deck .lamp { background: rgb(var(--light)); box-shadow: 0 0 calc(var(--U) * .03) rgb(var(--light)); }
+#obj.look-turntable .disc {
+  display: block; z-index: 2;
+  left: calc(var(--U) * .82); top: calc(var(--U) * .11);
+  box-shadow: 0 0 0 calc(var(--U) * .022) #2d2d31, 0 0 0 calc(var(--U) * .03) #141416;  /* platter rim */
+}
+.look-turntable .disc .hole { background: radial-gradient(circle at 35% 30%, #f2f2f4, #8a8a90); }  /* spindle */
+#obj.look-turntable .arm { display: block; z-index: 3; left: calc(var(--U) * 2.02); top: calc(var(--U) * .2); width: 0; height: 0; }
+.arm > i { position: absolute; }
+.arm .pivot {
+  z-index: 1;
+  left: calc(var(--U) * -.075); top: calc(var(--U) * -.075); width: calc(var(--U) * .15); height: calc(var(--U) * .15);
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #9a9aa0, #3d3d42 60%, #222225 100%);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, .5);
+}
+.arm .rod {
+  left: calc(var(--U) * -.012); top: 0; width: calc(var(--U) * .024); height: calc(var(--U) * .78);
+  border-radius: 99px;
+  background: linear-gradient(90deg, #8e8e94, #ececf0 45%, #74747a);
+  box-shadow: 3px 6px 6px rgba(0, 0, 0, .35);
+  transform-origin: 50% 0; transform: rotate(6deg);
+  transition: transform 1.5s cubic-bezier(.45, 0, .2, 1);
+}
+body.playing .arm .rod { transform: rotate(29deg); }
+.arm .head {
+  position: absolute; left: 50%; bottom: calc(var(--U) * -.06);
+  width: calc(var(--U) * .07); height: calc(var(--U) * .12); margin-left: calc(var(--U) * -.035);
+  border-radius: calc(var(--U) * .012);
+  background: linear-gradient(90deg, #26262a, #4b4b51);
+  box-shadow: 2px 4px 6px rgba(0, 0, 0, .4);
+}
+
+/* ------------------------------------------------------------ sleeve */
+
+/* the record slides out of its sleeve while it plays */
+#obj.look-sleeve { --W: calc(var(--U) * 1.5); --H: var(--U); --D: calc(var(--U) * .94); --S: var(--U); }
+.look-sleeve .sleeve { left: 0; top: 0; z-index: 2; }
+#obj.look-sleeve .disc {
+  display: block; z-index: 1;
+  left: calc(var(--U) * .03); top: calc(var(--U) * .03);
+  transition: transform 1.6s cubic-bezier(.3, .8, .2, 1);
+}
+body.playing .look-sleeve .disc { transform: translateX(calc(var(--U) * .5)); }
+
+/* ------------------------------------------------------------ aura */
+
+/* the cover in a soft glow of its own colours, breathing with the music */
+#obj.look-aura { --W: var(--U); --H: var(--U); --S: var(--U); }
+.look-aura .sleeve { left: 0; top: 0; z-index: 1; border-radius: calc(var(--U) * .045); }
+.look-aura .sleeve::after { display: none; }
+#obj.look-aura .glow {
+  display: block; z-index: 0;
+  left: -18%; top: -18%; width: 136%; height: 136%;
+  animation: breathe 7s ease-in-out infinite alternate;
+}
+.glow img {
+  width: 100%; height: 100%; object-fit: cover; border-radius: 30%;
+  filter: blur(calc(var(--U) * .14)) saturate(1.9) brightness(1.15);
+  opacity: .9;
+  transform: scale(calc(1 + var(--level) * .12));
+}
+@keyframes breathe { from { transform: scale(.95); opacity: .8; } to { transform: scale(1.05); opacity: 1; } }

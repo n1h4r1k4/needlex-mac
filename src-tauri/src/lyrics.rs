@@ -40,7 +40,7 @@ const API: &str = "https://lrclib.net/api";
 
 pub fn client() -> reqwest::Client {
     reqwest::Client::builder()
-        .user_agent("NeedleX/0.1 (desktop lyrics island for Windows)")
+        .user_agent("NeedleX/0.1 (desktop lyrics island for macOS)")
         .timeout(std::time::Duration::from_secs(12))
         .build()
         .expect("http client")

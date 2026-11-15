@@ -1,6 +1,16 @@
 // NeedleX – full-screen "now playing": cover view → click → word-by-word lyrics
 const DEMO = !window.__TAURI__ ? new URLSearchParams(location.search) : null;
 const { invoke, listen } = DEMO ? demoBridge(DEMO) : { invoke: window.__TAURI__.core.invoke, listen: window.__TAURI__.event.listen };
+// Desktop wallpaper: the same view drawn on the desktop behind every window
+// (the "wall" window), and on the lock screen (the "lock" window, with the
+// clock). In a browser: full.html?wall=1 or ?lock=1
+const LABEL = (() => {
+  try { if (window.__TAURI__) return window.__TAURI__.window.getCurrentWindow().label; } catch {}
+  const q = new URLSearchParams(location.search);
+  return q.has('lock') ? 'lock' : q.has('wall') ? 'wall' : 'full';
+})();
+const LOCK = LABEL === 'lock';
+const WALL = LABEL === 'wall' || LOCK;
 
 // Lets the page be previewed in a normal browser: full.html?mode=lyrics&style=stars&t=9000
 function demoBridge(q) {
@@ -33,7 +43,7 @@ function demoBridge(q) {
   }, 100);
   return {
     invoke: async (cmd) => (cmd === 'fetch_lyrics' ? lyrics : null),
-    listen: (ev, fn) => { handlers[ev] = fn; },
+    listen: (ev, fn) => { const prev = handlers[ev]; handlers[ev] = prev ? (e) => { prev(e); fn(e); } : fn; },
   };
 }
 
@@ -60,7 +70,7 @@ const S = {
   lastLevelAt: 0,
   gotLevel: false,
   mode: 'cover',
-  style: lsGet('fullStyle') === 'words' ? 'words' : 'stars',
+  style: 'words', // the lyrics effect (tray → Lyrics effect, or the Aa button)
   img: null,
   lyricsRes: null,
   lyricsLoading: false,
@@ -307,6 +317,7 @@ function setArt(src, animate) {
     applyPalette(img);
     zoomImgs.forEach((i) => { i.src = src; });
     $('#bg-words .wash').src = src;
+    $$('#bg-aura .wash, #bg-big .wash, #lock-record img').forEach((i) => { i.src = src; });
     $('.vinyl img').src = src;
     $('#thumb').src = src;
     if (window.FlowBG) FlowBG.setImage(S.img);
@@ -396,6 +407,8 @@ function resetLyrics() {
   S.li = S.wi = -2;
   Stars.reset();
   Words.reset();
+  Term.reset();
+  Lines.reset();
   updateMsg();
 }
 
@@ -454,12 +467,14 @@ const Stars = {
     const line = S.lines[li];
     let c = this.consts.find((o) => o.li === li);
     if (!c) {
+      // a single constellation at a time
+      const keep = 1;
       for (const o of this.consts) {
         o.age++;
-        if (o.age === 1) o.el.classList.add('old');
+        if (o.age < keep) o.el.classList.add('old');
         else { o.el.classList.add('gone'); setTimeout(() => o.el.remove(), 1500); }
       }
-      this.consts = this.consts.filter((o) => o.age < 2);
+      this.consts = this.consts.filter((o) => o.age < keep);
       if (!line.words.length) return;
       c = this.build(li, line);
       this.consts.push(c);
@@ -475,8 +490,13 @@ const Stars = {
     if (ai === this.lastAnchor) ai = (ai + 3) % anchors.length;
     this.lastAnchor = ai;
     const n = line.words.length;
-    const step = Math.min(W, H) * (n > 9 ? 0.085 : n > 5 ? 0.105 : 0.13);
-    let x = anchors[ai][0] * W, y = anchors[ai][1] * H;
+    const step = Math.min(W, H) * (n > 9 ? 0.12 : n > 5 ? 0.15 : 0.19);
+    // where the stars may go: a box in the middle of the screen (under the
+    // clock in the full view, between the clock and the password field on
+    // the lock screen)
+    const box = LOCK ? [0.2, 0.8, 0.33, 0.7] : WALL ? [0.16, 0.84, 0.24, 0.76] : [0.14, 0.86, 0.32, 0.82];
+    const [bx0, bx1, by0, by1] = [box[0] * W, box[1] * W, box[2] * H, box[3] * H];
+    let x = W / 2, y = (by0 + by1) / 2;
     let ang = r() * Math.PI * 2;
     const pts = [];
     for (let k = 0; k < n; k++) {
@@ -488,12 +508,19 @@ const Stars = {
           nx = x + Math.cos(ang) * d;
           ny = y + Math.sin(ang) * d * 0.8;
           tries++;
-        } while ((nx < W * 0.08 || nx > W * 0.92 || ny < H * 0.36 || ny > H * 0.88
+        } while ((nx < bx0 || nx > bx1 || ny < by0 || ny > by1
           || pts.some((p) => Math.hypot(p.x - nx, p.y - ny) < step * 0.6)) && tries < 30);
-        x = clamp(nx, W * 0.08, W * 0.92);
-        y = clamp(ny, H * 0.36, H * 0.88);
+        x = clamp(nx, bx0, bx1);
+        y = clamp(ny, by0, by1);
       }
       pts.push({ x, y });
+    }
+    {
+      // centre the whole constellation in its box
+      const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+      const dx = (bx0 + bx1) / 2 - (Math.min(...xs) + Math.max(...xs)) / 2;
+      const dy = (by0 + by1) / 2 - (Math.min(...ys) + Math.max(...ys)) / 2;
+      for (const p of pts) { p.x += dx; p.y += dy; }
     }
 
     const el = document.createElement('div');
@@ -546,34 +573,73 @@ const Stars = {
   },
 };
 
-// ------------------------------------------------------------ style: big words
+// ------------------------------------------------------------ word icons
 
-// "Lens" style (2nd song in the reel): previous word small & italic above,
-// the current word big in the middle, the coming word waiting in a label
-// below. Every new word and label first appears as a lens made of the
-// cover's stretched pixels, then settles into solid type.
+// A few words get a little picture next to them (Big Words, Aura), drawn in
+// the same colour as the word.
+const ICONS = {
+  bulb: 'M12 2a7 7 0 0 0-4 12.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26A7 7 0 0 0 12 2zM9 20h6v1a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2z',
+  note: 'M10 3v11.56A4 4 0 1 0 12 18V8.5l6 1.6V5.1z',
+  heart: 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54z',
+  star: 'M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z',
+  flame: 'M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67z',
+  moon: 'M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 0 1-4.4 2.26 5.4 5.4 0 0 1-3.14-9.8C12.92 3.04 12.46 3 12 3z',
+  sun: 'M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM11 1h2v3h-2zm0 19h2v3h-2zM1 11h3v2H1zm19 0h3v2h-3zM4.22 5.64l1.42-1.42 2.12 2.12-1.42 1.42zm12.02 12.02l1.42-1.42 2.12 2.12-1.42 1.42zM4.22 18.36l2.12-2.12 1.42 1.42-2.12 2.12zM16.24 6.34l2.12-2.12 1.42 1.42-2.12 2.12z',
+  drop: 'M12 2.7S5 10.3 5 15a7 7 0 0 0 14 0c0-4.7-7-12.3-7-12.3z',
+};
+const ICON_WORDS = {};
+for (const [icon, words] of Object.entries({
+  bulb: 'light lights lit bulb',
+  note: 'song songs music sing singing sang melody tune radio record',
+  heart: 'love loved lover loving heart hearts',
+  star: 'star stars starlight',
+  flame: 'fire burn burning burned flame flames hot',
+  moon: 'moon night nights tonight midnight',
+  sun: 'sun sunshine sunlight sunrise sunset summer',
+  drop: 'rain raining tear tears cry crying ocean sea',
+})) for (const w of words.split(' ')) ICON_WORDS[w] = icon;
+function iconFor(word) {
+  const n = ICON_WORDS[word.toLowerCase().replace(/[^a-z]/g, '')];
+  return n ? `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[n]}" fill="currentColor"/></svg>` : '';
+}
+
+// ------------------------------------------------------------ style: Big Words / Lens / Aura
+
+// The previous word small above, the current word big in the middle, the
+// coming word waiting below (Lens: in a label). Big Words and Aura add a
+// little picture to some words; Lens tilts the words a bit.
 const Words = {
   root: $('#words'),
   els: [],
   chip: null,
-  lens: [],
   li: -2,
   wi: -1,
-  reset() { this.root.innerHTML = ''; this.els = []; this.chip = null; this.lens = []; this.li = -2; this.wi = -1; },
+  reset() { this.root.innerHTML = ''; this.els = []; this.chip = null; this.li = -2; this.wi = -1; },
+  geo() {
+    // centred on the desktop; under the clock in full screen and on the lock screen
+    const dy = WALL && !LOCK ? 0 : 0.06;
+    return { prev: 0.33 + dy, cur: 0.5 + dy, next: 0.68 + dy, tilt: S.style === 'lens' ? 5 : 1.4 };
+  },
   place(e) {
     e.el.style.transform = `translate(${e.x * innerWidth}px, ${e.y * innerHeight}px) translate(-50%, -50%) rotate(${e.rot}deg)`;
   },
-  drop(e) { e.el.classList.add('gone'); setTimeout(() => e.el.remove(), 800); },
-  lensOn(e, kind, dur) {
-    e.el.classList.add('lens');
-    this.lens = this.lens.filter((l) => l.e !== e);
-    this.lens.push({ e, kind, t0: performance.now(), dur });
-    clearTimeout(e.lensT);
-    e.lensT = setTimeout(() => e.el.classList.remove('lens'), dur * 0.32);
+  // very long words are shrunk to fit the screen
+  fit(e) {
+    e.el.style.fontSize = '';
+    const max = innerWidth * 0.9;
+    const w = e.el.scrollWidth;
+    if (w > max) e.el.style.fontSize = `${(parseFloat(getComputedStyle(e.el).fontSize) * max) / w}px`;
   },
-  flash() {                       // beat: the big word briefly turns back into a lens
+  drop(e) { e.el.classList.add('gone'); setTimeout(() => e.el.remove(), 800); },
+  pop(e) {
+    e.el.classList.add('enter');
+    requestAnimationFrame(() => requestAnimationFrame(() => e.el.classList.remove('enter')));
+  },
+  flash() {                       // beat: the big word lights up for a moment
     const cur = this.els.find((x) => x.role === 'cur');
-    if (cur && !this.lens.some((l) => l.e === cur)) this.lensOn(cur, 'text', 320);
+    if (!cur) return;
+    cur.el.classList.add('beat');
+    setTimeout(() => cur.el.classList.remove('beat'), 140);
   },
   update(li, wi, jumped) {
     if (jumped) this.reset();
@@ -591,24 +657,25 @@ const Words = {
     this.makeChip(li, wi);
   },
   push(line, li, k) {
+    const g = this.geo();
     const r = rng(hashStr(li + ':' + k));
-    const cx = 0.4 + (r() - 0.5) * 0.08;
+    const cx = 0.5 + (r() - 0.5) * 0.04;
     for (const e of this.els) {
       e.age++;
       if (e.age === 1) {
         e.role = 'prev';
-        clearTimeout(e.lensT);
-        this.lens = this.lens.filter((l) => l.e !== e);
-        e.el.classList.remove('cur', 'lens');
+        e.el.classList.remove('cur', 'enter', 'beat');
         e.el.classList.add('prev');
-        Object.assign(e, { x: cx + (r() - 0.5) * 0.06, y: 0.405, rot: (r() - 0.5) * 4 });
+        e.el.querySelector('.ico')?.remove();
+        e.el.style.fontSize = '';
+        Object.assign(e, { x: cx + (r() - 0.5) * 0.03, y: g.prev, rot: (r() - 0.5) * g.tilt * 0.6 });
         this.place(e);
       } else this.drop(e);
     }
     this.els = this.els.filter((e) => e.age < 2);
-    let e;
+    let e, fresh = false;
     if (this.chip && this.chip.li === li && this.chip.k === k) {
-      e = this.chip.e;                // the label grows into the big word
+      e = this.chip.e;                // the waiting word grows into the big word
       this.chip = null;
       e.el.classList.remove('chip');
     } else {
@@ -618,11 +685,14 @@ const Words = {
       el.textContent = line.words[k].w;
       this.root.appendChild(el);
       e = { el };
+      fresh = true;
     }
-    Object.assign(e, { age: 0, role: 'cur', x: cx, y: 0.535, rot: (r() - 0.5) * 5 });
+    if (S.style !== 'lens') e.el.insertAdjacentHTML('beforeend', iconFor(line.words[k].w));
+    Object.assign(e, { age: 0, role: 'cur', x: cx, y: g.cur, rot: (r() - 0.5) * g.tilt });
     e.el.classList.add('cur');
     this.place(e);
-    this.lensOn(e, 'text', 560);
+    this.fit(e);
+    if (fresh) this.pop(e);
     this.els.push(e);
   },
   makeChip(li, wi) {
@@ -635,42 +705,118 @@ const Words = {
     if (nl < 0) { if (this.chip) { this.drop(this.chip.e); this.chip = null; } return; }
     if (this.chip && this.chip.li === nl && this.chip.k === nk) return;
     if (this.chip) this.drop(this.chip.e);
+    const g = this.geo();
     const cur = this.els.find((x) => x.role === 'cur');
     const r = rng(hashStr('chip' + nl + ':' + nk));
     const el = document.createElement('div');
     el.className = 'word chip';
     el.textContent = S.lines[nl].words[nk].w;
     this.root.appendChild(el);
-    const e = { el, role: 'chip', x: (cur ? cur.x : 0.4) + (r() - 0.5) * 0.07, y: 0.655, rot: (r() - 0.5) * 5 };
+    const e = { el, role: 'chip', x: (cur ? cur.x : 0.5) + (r() - 0.5) * 0.05, y: g.next, rot: (r() - 0.5) * g.tilt };
     this.place(e);
-    this.lensOn(e, 'box', 420);
+    this.pop(e);
     this.chip = { li: nl, k: nk, e };
   },
-  // lens shapes for the GPU, following the live (animating) position of each word
-  lensItems(now) {
-    this.lens = this.lens.filter((l) => now - l.t0 < l.dur && l.e.el.isConnected);
-    return this.lens.map((l) => {
-      const p = (now - l.t0) / l.dur;
-      const strength = p < 0.28 ? 1 : Math.pow(1 - (p - 0.28) / 0.72, 1.6);
-      const rc = l.e.el.getBoundingClientRect();
-      const x = rc.left + rc.width / 2, y = rc.top + rc.height / 2;
-      if (l.kind === 'box') return { kind: 'box', x, y, w: l.e.el.offsetWidth, h: l.e.el.offsetHeight, rot: l.e.rot, strength };
-      const fs = parseFloat(getComputedStyle(l.e.el).fontSize);
-      return { kind: 'text', text: l.e.el.textContent, font: `850 ${fs}px "Lyric Sans"`, x, y, rot: l.e.rot, strength };
+};
+
+// ------------------------------------------------------------ style: Terminal
+
+// The line being sung is typed word by word in a monospace font with a red
+// block cursor; the two lines before it fade above, words joined by dots.
+const Term = {
+  root: $('#term'),
+  li: -2,
+  row: null,
+  reset() { this.root.innerHTML = ''; this.li = -2; this.row = null; },
+  update(li, wi, jumped) {
+    if (jumped || li !== this.li) this.build(li);
+    if (!this.row) return;
+    this.row.querySelectorAll('.w').forEach((w, k) => w.classList.toggle('on', k <= wi));
+  },
+  build(li) {
+    this.li = li;
+    this.root.innerHTML = '';
+    this.row = null;
+    const text = (k) => (S.lines[k] ? S.lines[k].words.map((w) => w.w.replace(/[.,!?;:]+$/, '')).join('.') : '');
+    for (const [k, cls] of [[li - 2, 'o2'], [li - 1, 'o1']]) {
+      const t = k >= 0 ? text(k) : '';
+      if (!t) continue;
+      const d = document.createElement('div');
+      d.className = `row ${cls}`;
+      d.textContent = t;
+      this.root.appendChild(d);
+    }
+    const line = li >= 0 ? S.lines[li] : null;
+    const row = document.createElement('div');
+    row.className = 'row cur';
+    if (line) for (const w of line.words) {
+      const sp = document.createElement('span');
+      sp.className = 'w';
+      sp.textContent = w.w + ' ';
+      row.appendChild(sp);
+    }
+    row.insertAdjacentHTML('beforeend', '<span class="cursor"></span>');
+    this.root.appendChild(row);
+    this.row = row;
+  },
+};
+
+// ------------------------------------------------------------ style: scrolling lines
+
+// The whole song next to the cover, the line being sung bright, scrolling along.
+const Lines = {
+  inner: $('#lines .inner'),
+  els: [],
+  built: null,
+  li: -2,
+  reset() { this.inner.innerHTML = ''; this.els = []; this.built = null; this.li = -2; },
+  build() {
+    this.inner.innerHTML = '';
+    this.els = S.lines.map((ln) => {
+      const d = document.createElement('div');
+      d.className = 'ln';
+      d.textContent = ln.words.map((w) => w.w).join(' ') || '♪';
+      this.inner.appendChild(d);
+      return d;
     });
+    this.built = S.lines;
+    this.li = -2;
+  },
+  update(li) {
+    if (this.built !== S.lines) this.build();
+    if (li === this.li) return;
+    this.li = li;
+    this.els.forEach((d, k) => { d.classList.toggle('cur', k === li); d.classList.toggle('past', k < li); });
+    const d = this.els[Math.max(0, li)];
+    if (d) this.inner.style.transform = `translateY(${-(d.offsetTop + d.offsetHeight / 2)}px)`;
   },
 };
 
 // ------------------------------------------------------------ modes
 
+// Needle's five lyric effects, plus the whole song scrolling next to the cover
+const STYLES = ['words', 'lens', 'stars', 'terminal', 'aura', 'lines'];
+
 function setStyle(style) {
+  if (!STYLES.includes(style)) style = 'words';
+  const was = S.style;
   S.style = style;
-  lsSet('fullStyle', style);
-  stage.classList.toggle('style-stars', style === 'stars');
-  stage.classList.toggle('style-words', style === 'words');
+  for (const k of STYLES) stage.classList.toggle(`style-${k}`, k === style);
   Stars.reset();
   Words.reset();
+  Term.reset();
+  Lines.reset();
   S.li = S.wi = -2;
+  // the scrolling lines keep the cover on screen, the others blow it up
+  if (S.mode === 'lyrics' && (was === 'lines') !== (style === 'lines')) {
+    if (S.boxAnim) { S.boxAnim.cancel(); S.boxAnim = null; }
+    card.getAnimations().forEach((a) => a.cancel());
+    S.mode = 'cover';
+    S.busy = false;
+    stage.classList.replace('mode-lyrics', 'mode-cover');
+    $('#cover').style.opacity = '1';
+    setMode('lyrics');
+  }
 }
 
 function fullTransform() {
@@ -687,6 +833,14 @@ function fullTransform() {
 
 async function setMode(m) {
   if (S.mode === m || S.busy) return;
+  if (S.style === 'lines') {        // the cover just moves aside for the lyrics
+    S.mode = m;
+    stage.classList.toggle('mode-lyrics', m === 'lyrics');
+    stage.classList.toggle('mode-cover', m !== 'lyrics');
+    $('#cover').style.opacity = '1';
+    S.li = S.wi = -2;
+    return;
+  }
   S.busy = true;
   if (S.boxAnim) { S.boxAnim.cancel(); S.boxAnim = null; }
   const full = fullTransform();
@@ -734,7 +888,7 @@ function enter(slow) {
 
   stage.animate([{ opacity: 0 }, { opacity: 1 }], { duration: slow ? 1800 : 500, easing: 'ease-out', fill: 'forwards' });
   // the cover grows out of the notch at the top of the screen
-  artBox.animate(
+  if (!LOCK) artBox.animate(
     [{ transform: 'translateY(-36vh) scale(.1)', opacity: 0.4 }, { transform: 'none', opacity: 1 }],
     { duration: 1000, easing: 'cubic-bezier(.2,1.1,.3,1)' });
   $('#clock').animate([{ opacity: 0, transform: 'translateY(-2vh)' }, { opacity: 1, transform: 'none' }],
@@ -744,7 +898,7 @@ function enter(slow) {
 
   const hint = $('#hint');
   const shown = Number(lsGet('hintShown') || 0);
-  if (shown < 3) {
+  if (!WALL && shown < 3) {
     lsSet('hintShown', String(shown + 1));
     hint.classList.add('show');
     setTimeout(() => hint.classList.remove('show'), 3500);
@@ -772,6 +926,10 @@ function open(opts) {
   if (window.Glitter) Glitter.resize();
   enter(auto);
   requestAnimationFrame(sizeGlass);
+  // macOS hands the keyboard to the page as the window opens and WebKit may
+  // focus the first button; drop that so Enter / Space only do their shortcut
+  const unfocus = () => { const a = document.activeElement; if (a && a !== document.body) a.blur(); };
+  unfocus(); setTimeout(unfocus, 120); setTimeout(unfocus, 400);
   // opened by the idle timer: drift into the lyrics on its own, like a screensaver
   clearTimeout(S.autoT);
   if (auto) S.autoT = setTimeout(() => { if (S.open && S.mode === 'cover' && S.lines.length) setMode('lyrics'); }, 6000);
@@ -781,7 +939,7 @@ function open(opts) {
 // ------------------------------------------------------------ input
 
 document.addEventListener('click', (e) => {
-  if (!S.open || S.closing) return;
+  if (!S.open || S.closing || WALL) return;
   if (e.target.closest('button, .card, #corner')) return;
   const W = innerWidth;
   const onSide = e.clientX < W * 0.15 || e.clientX > W * 0.85;
@@ -798,7 +956,7 @@ document.addEventListener('click', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (!S.open) return;
+  if (!S.open || WALL) return;
   if (e.key === 'Escape') exit();
   else if (e.key === ' ') { e.preventDefault(); control('toggle'); }
   else if (e.key === 'ArrowRight') control('next');
@@ -839,7 +997,11 @@ $('.bar').addEventListener('click', (e) => {
   S.li = S.wi = -2;
 });
 
-$('#style-btn').addEventListener('click', () => setStyle(S.style === 'stars' ? 'words' : 'stars'));
+$('#style-btn').addEventListener('click', () => {
+  const next = STYLES[(STYLES.indexOf(S.style) + 1) % STYLES.length];
+  setStyle(next);
+  invoke('set_lyric_style', { style: next }).catch(() => {});
+});
 $('#thumb').addEventListener('click', () => setMode('cover'));
 
 // ------------------------------------------------------------ clock
@@ -860,6 +1022,8 @@ let lastSec = -1;
 
 function frame(t) {
   if (!S.open) { S.raf = 0; return; }
+  // as a wallpaper ~30 fps is plenty and easier on the battery
+  if (WALL && t - lastT < 30) { S.raf = requestAnimationFrame(frame); return; }
   const dt = Math.min(100, t - lastT);
   lastT = t;
   const playing = !!S.track && S.play.playing;
@@ -876,7 +1040,7 @@ function frame(t) {
   if (playing && smooth - S.slowLevel > 0.16 && t - (S.lastGlitch || 0) > 900 && Math.random() < (S.style === 'words' ? 0.35 : 0.14)) {
     S.glitch = 1;
     S.lastGlitch = t;
-    if (S.style === 'words' && S.mode === 'lyrics' && !(DEMO && DEMO.get('calm'))) Words.flash();
+    if ((S.style === 'words' || S.style === 'lens' || S.style === 'aura') && S.mode === 'lyrics' && !(DEMO && DEMO.get('calm'))) Words.flash();
   }
   S.glitch *= 0.8;
   if (DEMO && DEMO.get('calm')) S.glitch = 0;
@@ -885,16 +1049,6 @@ function frame(t) {
   const lyr = S.mode === 'lyrics';
   if (window.Glitter) Glitter.draw(t, smooth, playing);
   if (window.EdgeLight && S.settings.glow) EdgeLight.draw(t, smooth, playing, S.lightRGB || [236, 226, 232], lyr ? 1 : 0.7);
-
-  // GPU background (keeps drawing a moment after leaving so the fade is smooth)
-  if (window.FlowBG && (lyr || t < S.glUntil)) {
-    if (lyr) S.glUntil = t + 1200;
-    const since = t - S.pixStart;
-    const steps = [0.07, 0.045, 0.028, 0.017, 0.01, 0.005];
-    const pix = since < 0 || since > steps.length * 80 ? 0 : steps[Math.floor(since / 80)];
-    FlowBG.setLens(S.style === 'words' && lyr ? Words.lensItems(t) : []);
-    FlowBG.draw({ time: t / 1000, level: smooth, mode: S.style === 'words' ? 1 : 0, pix, glitch: S.glitch, seed: (S.track ? hashStr(S.track.key) % 97 : 0) / 10 });
-  }
 
   const p = pos();
 
@@ -927,6 +1081,8 @@ function frame(t) {
       S.li = li;
       S.wi = wi;
       if (S.style === 'stars') Stars.update(li, wi, jumped);
+      else if (S.style === 'terminal') Term.update(li, wi, jumped);
+      else if (S.style === 'lines') Lines.update(li);
       else Words.update(li, wi, jumped);
     }
   }
@@ -947,10 +1103,10 @@ function sizeGlass() {
   const b = $('#style-btn');
   LiquidGlass.size('lg-btn', b.offsetWidth, b.offsetHeight, b.offsetWidth / 2, b.offsetWidth * 0.3);
 }
-if (window.FlowBG) stage.classList.add('gl');
 
 function applySettings(s) {
   S.settings = { ...S.settings, ...s };
+  if (S.settings.lyricStyle && S.settings.lyricStyle !== S.style) setStyle(S.settings.lyricStyle);
   if (window.Glitter) Glitter.setMode(S.settings.glitter || 'off');
   document.body.classList.toggle('no-glow', !S.settings.glow);
 }
@@ -965,6 +1121,8 @@ window.addEventListener('resize', () => {
   sizeCanvases();
   Stars.reset();
   Words.reset();
+  Term.reset();
+  Lines.reset();
   S.li = S.wi = -2;
 });
 
@@ -981,3 +1139,102 @@ listen('audio:level', (e) => {
 setStyle(S.style);
 setArt(PLACEHOLDER, false);
 updateClock();
+
+// ------------------------------------------------------------ desktop wallpaper / lock screen
+
+// Desktop: fades in while music plays – the lyrics while the song runs, the
+// cover while it is paused or has no synced lyrics – and your own wallpaper
+// comes back half a minute after the music stops.
+// Lock screen: the record turns under the clock over your lock screen; click
+// it for the cover, click the cover for the lyrics (in the chosen effect),
+// click the lyrics to go back to the record. The player card works too.
+if (WALL) {
+  document.body.classList.add('wall');
+  if (LOCK) document.body.classList.add('lock');
+  const W = { active: false, lastPlay: -1e9, want: 'cover', wantAt: 0, hiding: false };
+  const L = { state: 'record', tries: 0 };
+  listen('media:state', (e) => { W.active = !!(e.payload && e.payload.active); });
+  listen('media:track', (e) => { if (!e.payload || !e.payload.key) W.active = false; });
+
+  // setMode ignores calls while an animation runs: keep asking until it's done
+  const ensureMode = (m, n = 0) => {
+    if (S.mode === m || n > 20) return;
+    if (!S.busy) setMode(m);
+    setTimeout(() => ensureMode(m, n + 1), 250);
+  };
+  const lockState = (st) => {
+    L.state = st;
+    for (const k of ['record', 'cover', 'lyrics']) stage.classList.toggle(`lk-${k}`, k === st);
+    ensureMode(st === 'lyrics' ? 'lyrics' : 'cover');
+    setTimeout(reportHits, 60);
+    setTimeout(reportHits, 1100);
+  };
+  // the lock-screen window only takes the mouse over what can be clicked
+  const reportHits = () => {
+    if (!LOCK) return;
+    const rects = [];
+    if (S.open && !W.hiding) {
+      const add = (el) => {
+        const b = el.getBoundingClientRect();
+        if (b.width > 0 && b.height > 0) rects.push({ x: b.left, y: b.top, w: b.width, h: b.height });
+      };
+      if (L.state !== 'lyrics' || S.style === 'lines') add(card);
+      if (L.state === 'record') add($('#lock-record'));
+      if (L.state === 'cover') add(artBox);
+      if (L.state === 'lyrics') rects.push({ x: 0, y: innerHeight * 0.26, w: innerWidth, h: innerHeight * 0.5 });
+    }
+    invoke('set_lock_hit', { rects }).catch(() => {});
+  };
+  if (LOCK) {
+    stage.classList.add('lk-record');
+    setInterval(reportHits, 1000);
+    document.addEventListener('click', (e) => {
+      if (!S.open || W.hiding || e.target.closest('.card')) return;
+      if (L.state === 'record') { if (e.target.closest('#lock-record')) lockState('cover'); }
+      else if (L.state === 'cover') { if (e.target.closest('.art-box')) lockState(S.lines.length ? 'lyrics' : 'record'); }
+      else lockState('record');
+    });
+  }
+
+  const show = () => {
+    S.open = true;
+    W.want = 'cover';
+    if (LOCK) lockState('record');
+    if (window.EdgeLight) EdgeLight.resize();
+    if (window.Glitter) Glitter.resize();
+    enter(true);
+    requestAnimationFrame(sizeGlass);
+    if (!S.raf) S.raf = requestAnimationFrame(frame);
+    setTimeout(reportHits, 1900);
+  };
+  const hide = async () => {
+    W.hiding = true;
+    reportHits();
+    const a = stage.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 1600, easing: 'ease-in-out', fill: 'forwards' });
+    await a.finished.catch(() => {});
+    S.open = false; // stops drawing
+    stage.getAnimations().forEach((x) => x.cancel());
+    W.hiding = false;
+    reportHits();
+  };
+  setInterval(() => {
+    const now = performance.now();
+    const playing = W.active && !!S.track && S.play.playing;
+    if (playing) W.lastPlay = now;
+    // the lock screen shows the player whenever a song is loaded (playing or
+    // paused, to resume from it); the desktop only while music plays
+    const keep = W.active && !!S.track && (LOCK || playing || now - W.lastPlay < 30000);
+    if (LOCK) {
+      const why = `active=${W.active} track=${S.track ? S.track.title : '-'} playing=${playing} keep=${keep} open=${S.open}`;
+      if (why !== W.why) { W.why = why; invoke('debug_log', { msg: why }).catch(() => {}); }
+    }
+    if (keep && !S.open) show();
+    else if (!keep && S.open && !W.hiding) hide();
+    if (!S.open || W.hiding || LOCK) return;
+    const want = playing && S.lines.length ? 'lyrics' : 'cover';
+    if (want !== W.want) { W.want = want; W.wantAt = now; }
+    if (want !== S.mode && !S.busy && now - W.wantAt > 1200) setMode(want);
+  }, 400);
+  if (DEMO && DEMO.get('lk')) setTimeout(() => lockState(DEMO.get('lk')), 1500);
+  invoke('media_resend').catch(() => {});
+}
