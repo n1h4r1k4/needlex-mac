@@ -7,17 +7,10 @@ const { invoke, listen } = DEMO ? demoBridge(DEMO) : { invoke: window.__TAURI__.
 
 function demoBridge(q) {
   const handlers = {};
-  const c = document.createElement('canvas');
-  c.width = c.height = 300;
-  const g = c.getContext('2d');
-  const gr = g.createLinearGradient(0, 0, 300, 300);
-  gr.addColorStop(0, '#f4d1c4'); gr.addColorStop(0.5, '#a3475a'); gr.addColorStop(1, '#1b1020');
-  g.fillStyle = gr; g.fillRect(0, 0, 300, 300);
-  g.fillStyle = 'rgba(255,255,255,.85)'; g.beginPath(); g.arc(170, 130, 60, 0, 7); g.fill();
   document.body.style.background = 'linear-gradient(160deg, #6b8fb5, #c9a27a)';
   setTimeout(() => {
     handlers.settings?.({ payload: { wallpaper: q.get('look') || 'turntable' } });
-    handlers['media:track']?.({ payload: { key: 'demo', title: 'National Treasures', artist: 'Drake', album: '', art: c.toDataURL(), source: 'demo', sourceName: 'Demo' } });
+    handlers['media:track']?.({ payload: { key: DemoSong.key, title: DemoSong.title, artist: DemoSong.artist, album: DemoSong.album, art: DemoSong.art(), source: 'demo', sourceName: 'Demo' } });
     handlers['media:state']?.({ payload: { active: true, playing: q.get('paused') == null } });
   }, 100);
   return {

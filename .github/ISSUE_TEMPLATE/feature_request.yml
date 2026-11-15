@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest an idea for NeedleX
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+      description: Describe the feature and where it would show up (island, full screen, desktop, lock screen, tray menu…).
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why?
+      description: What would it make easier or nicer?
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Sketches, screenshots or examples are welcome.

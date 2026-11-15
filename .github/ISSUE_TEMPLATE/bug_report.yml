@@ -1,0 +1,56 @@
+name: Bug report
+description: Something doesn't work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to report this! Please fill in as much as you can.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you see, and what did you expect to see instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Play a song in Spotify
+        2. Open the island
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: e.g. macOS 15.1 on an M2 MacBook Air
+    validations:
+      required: true
+  - type: dropdown
+    id: player
+    attributes:
+      label: Player
+      options: [Spotify, Apple Music, Both, Not related to a player]
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: NeedleX commit
+      description: Output of `git rev-parse --short HEAD` in your clone
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        Optional. Run `open --env NEEDLEX_DEBUG=1 --stderr /tmp/needlex.log /Applications/NeedleX.app`,
+        reproduce the problem and paste the relevant lines. Check it for anything private first.
+      render: text
+  - type: textarea
+    id: screens
+    attributes:
+      label: Screenshots or recording
+      description: Optional, but very helpful for visual problems.

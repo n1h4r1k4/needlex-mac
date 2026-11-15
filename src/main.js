@@ -7,18 +7,20 @@ const { invoke, listen } = DEMO ? islandDemo(DEMO) : { invoke: window.__TAURI__.
 function islandDemo(q) {
   const h = {};
   const mk = (w, hh, paint) => { const c = document.createElement('canvas'); c.width = w; c.height = hh; paint(c.getContext('2d'), w, hh); return c.toDataURL('image/jpeg', 0.9); };
-  // a busy fake desktop so the refraction is visible
+  // a soft fake wallpaper so the glass has something to refract
   const desk = mk(560, 520, (g, w, hh) => {
-    const gr = g.createLinearGradient(0, 0, w, hh); gr.addColorStop(0, '#2b6cb0'); gr.addColorStop(0.5, '#d53f8c'); gr.addColorStop(1, '#f6ad55');
+    const gr = g.createLinearGradient(0, 0, w, hh); gr.addColorStop(0, '#1d2b64'); gr.addColorStop(0.55, '#7b3fa0'); gr.addColorStop(1, '#f8a978');
     g.fillStyle = gr; g.fillRect(0, 0, w, hh);
-    g.fillStyle = 'rgba(255,255,255,.9)'; g.font = 'bold 22px Segoe UI';
-    for (let y = 30; y < hh; y += 34) g.fillText('Liquid glass refracts the desktop behind it  •  NeedleX', 6 - (y % 60), y);
+    for (const [x, y, r, c] of [[90, 120, 220, '#ff6fb5'], [470, 90, 200, '#4fd1ff'], [300, 430, 260, '#ffd36e'], [520, 380, 160, '#8a5cff']]) {
+      const rg = g.createRadialGradient(x, y, 0, x, y, r); rg.addColorStop(0, c + 'aa'); rg.addColorStop(1, c + '00');
+      g.fillStyle = rg; g.fillRect(0, 0, w, hh);
+    }
   });
-  const art = mk(300, 300, (g) => { const gr = g.createLinearGradient(0, 0, 300, 300); gr.addColorStop(0, '#1e3a8a'); gr.addColorStop(1, '#0b0b1a'); g.fillStyle = gr; g.fillRect(0, 0, 300, 300); g.fillStyle = '#e11d48'; g.fillRect(40, 60, 220, 70); });
+  const art = DemoSong.art(300);
   document.body.style.background = `url(${desk}) 0 0 / 100% 100%`;
   setTimeout(() => {
     h['settings']?.({ payload: { floating: false, hideIdle: true, glow: true } });
-    h['media:track']?.({ payload: { key: 'd', title: 'All I Know', artist: 'The Weeknd', album: 'Starboy', art, source: 'demo', sourceName: 'Spotify' } });
+    h['media:track']?.({ payload: { key: DemoSong.key, title: DemoSong.title, artist: DemoSong.artist, album: DemoSong.album, art, source: 'demo', sourceName: 'Spotify' } });
     h['media:state']?.({ payload: { active: true, playing: true, positionMs: 61000, durationMs: 321000, hasTimeline: true, canNext: true, canPrev: true, canSeek: true } });
     const v = q.get('view') || 'expanded';
     setTimeout(() => {
@@ -30,11 +32,11 @@ function islandDemo(q) {
   return {
     invoke: async (cmd) => {
       if (cmd === 'capture_backdrop') return desk;
-      if (cmd === 'fetch_lyrics') return { found: true, instrumental: false, plain: null, synced: [{ time: 58000, text: 'All I know is this' }, { time: 62000, text: 'all I know, all I know' }, { time: 66000, text: 'Every time I ride with you' }] };
+      if (cmd === 'fetch_lyrics') return { found: true, instrumental: false, plain: null, synced: DemoSong.synced(54000) };
       if (cmd === 'get_settings') return { floating: false, hideIdle: true, glow: true };
       if (cmd === 'get_weather') {
         const hrs = [[16, 26, 2, 10], [17, 25, 3, 20], [18, 24, 61, 60], [19, 23, 61, 70], [20, 22, 3, 30], [21, 21, 2, 10]];
-        return { city: 'Bengaluru', temp: 26, code: 3, isDay: true, high: 27, low: 19, now: '2026-11-15T15:45',
+        return { city: 'San Francisco', temp: 26, code: 3, isDay: true, high: 27, low: 19, now: '2026-11-15T15:45',
           hours: hrs.map(([hh, t, c, r]) => ({ time: `2026-11-15T${hh}:00`, temp: t, code: c, isDay: hh < 18, rain: r })) };
       }
       if (cmd === 'get_calendar') {

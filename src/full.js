@@ -25,15 +25,11 @@ const WALL = LABEL === 'wall' || LOCK;
 // Lets the page be previewed in a normal browser: full.html?mode=lyrics&style=stars&t=9000
 function demoBridge(q) {
   const handlers = {};
-  const c = document.createElement('canvas');
-  c.width = c.height = 300;
-  const g = c.getContext('2d');
-  const gr = g.createLinearGradient(0, 0, 300, 300);
-  gr.addColorStop(0, '#f4d1c4'); gr.addColorStop(0.5, '#a3475a'); gr.addColorStop(1, '#1b1020');
-  g.fillStyle = gr; g.fillRect(0, 0, 300, 300);
-  g.fillStyle = 'rgba(255,255,255,.85)'; g.beginPath(); g.arc(170, 130, 60, 0, 7); g.fill();
-  const text = ['First day back in the game since', 'We been hotel to hotel, money on my brain', 'Go and tell them I\'m', '', 'Oh they know the way'];
-  const lyrics = { found: true, instrumental: false, plain: null, synced: text.map((t, i) => ({ time: i * 4000, text: t })) };
+  // the desktop / lock screen views are see-through: give them a wallpaper
+  if (q.has('lock') || q.has('wall')) {
+    document.documentElement.style.background = 'radial-gradient(60% 70% at 20% 25%, #ff6fb588, transparent), radial-gradient(50% 60% at 85% 20%, #4fd1ff66, transparent), linear-gradient(160deg, #1d2b64, #7b3fa0 55%, #f8a978)';
+  }
+  const lyrics = { found: true, instrumental: false, plain: null, synced: DemoSong.synced() };
   if (q.get('snap')) {
     const st = document.createElement('style');
     st.textContent = '*,*::before,*::after{transition-duration:0s!important;transition-delay:0s!important}';
@@ -44,7 +40,7 @@ function demoBridge(q) {
   }
   setTimeout(() => {
     const t0 = Number(q.get('t') || 6000);
-    handlers['media:track']?.({ payload: { key: 'demo', title: 'National Treasures', artist: 'Drake', album: '', art: q.get('art') || c.toDataURL(), source: 'demo', sourceName: 'Demo' } });
+    handlers['media:track']?.({ payload: { key: DemoSong.key, title: DemoSong.title, artist: DemoSong.artist, album: DemoSong.album, art: q.get('art') || DemoSong.art(), source: 'demo', sourceName: 'Demo' } });
     handlers['media:state']?.({ payload: { active: true, playing: true, positionMs: t0, durationMs: 200000, hasTimeline: true, canNext: true, canPrev: true, canSeek: true } });
     handlers['full:open']?.({});
     if (q.get('style')) setStyle(q.get('style'));
