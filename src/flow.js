@@ -1,4 +1,8 @@
 // GPU background for the lyric views (WebGL2).
+//  mode 2 "liquid": the cover sharp inside slowly drifting liquid drops and
+//                  melted into a soft blur outside; the drops' edges bend the
+//                  picture and catch a thin glossy highlight, and they grow and
+//                  shrink so the cover keeps coming into focus and melting away
 //  mode 0 "stars": the cover fills the screen and keeps flowing like liquid,
 //                  radial zoom-blur streaks + horizontal smear lines toward the edges
 //  mode 1 "words": blurred colour wash, the cover sharp on the right with its
@@ -52,6 +56,58 @@ window.FlowBG = (() => {
     a += tex(tc + vec2(-px, -px * 0.5), lod);
     a += tex(tc + vec2( px * 0.5, -px), lod);
     return a / 5.0;
+  }
+
+  float fbm3(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 3; i++){ v += a * noise(p); p = p * 2.03 + 1.7; a *= 0.5; } return v; }
+
+  // ---------------- LIQUID
+  vec3 liquidBG(vec2 s, float aspect){
+    float t = uTime;
+    // breathing: about ten seconds in focus, ten melted, a few in between
+    float ph = sin(t * 6.2831853 / 26.0 + uSeed);
+    float breath = mix(1.0, 2.7, smoothstep(-0.35, 0.35, ph)) * (1.0 + uLevel * 0.1);
+
+    // metaballs (+ their gradient, for the surface normal)
+    float f = 0.0; vec2 g = vec2(0.0);
+    for (int i = 0; i < 5; i++){
+      float fi = float(i);
+      // a few big drops, wandering wide – often half off the screen
+      vec2 c = vec2(sin(t * (0.06 + fi * 0.015) + fi * 2.1 + uSeed) * 0.62 * aspect,
+                    cos(t * (0.05 + fi * 0.019) + fi * 1.3 + uSeed * 0.7) * 0.5);
+      float r = (0.17 + 0.07 * sin(t * 0.15 + fi * 1.7)) * breath;
+      vec2 d = s - c;
+      float q = dot(d, d) + 1e-4;
+      f += r * r / q;
+      g += -2.0 * r * r * d / (q * q);
+    }
+    // wobbly liquid edges
+    f *= 1.0 + (fbm3(s * 1.5 + vec2(t * 0.05, -t * 0.04)) - 0.5) * 1.1
+             + (noise(s * 7.0 + t * 0.2) - 0.5) * 0.12;
+    vec2 n = g / (length(g) + 1e-3);           // points into the drop
+    float lf = log(max(f, 1e-4));             // 0 on the edge, > 0 inside
+    float inside = smoothstep(-0.05, 0.05, lf);
+
+    float zoom = 1.0 / (max(aspect, 1.0) * 1.02);
+    vec2 tc = s * zoom + 0.5;
+    // inside: sharp, bulging like a lens toward the edge, a hint of colour fringe
+    float lens = exp(-max(lf, 0.0) * 2.5);
+    vec2 tin = tc - n * lens * 0.04 * zoom;
+    float ca = lens * 0.005;
+    vec3 sharp = vec3(tex(tin + n * ca, 0.0).r, tex(tin, 0.0).g, tex(tin - n * ca, 0.0).b);
+    // outside: melted, drifting slowly
+    vec2 drift = (vec2(fbm3(s * 1.3 + t * 0.03), fbm3(s * 1.3 - t * 0.025 + 17.0)) - 0.5) * 0.05;
+    vec3 soft = blurTex(tc + drift, 6.4);
+    float sl = dot(soft, vec3(0.299, 0.587, 0.114));
+    soft = mix(vec3(sl), soft, 1.25);
+    vec3 c = mix(soft, sharp, inside);
+    // glossy rim: a thin bright line, brighter where it faces the light
+    float light = 0.4 + 0.6 * max(0.0, dot(-n, normalize(vec2(-0.45, 0.9))));
+    c += vec3(1.0, 0.985, 0.96) * exp(-pow(lf / 0.035, 2.0)) * light * 0.7;
+    c += vec3(1.0) * exp(-pow(lf / 0.2, 2.0)) * 0.025;          // soft halo
+    c *= 1.0 - exp(-pow((lf - 0.1) / 0.05, 2.0)) * 0.16;          // darker meniscus inside
+    float r = length(s / vec2(max(aspect, 1.0) * 0.5, 0.5));
+    c *= 1.0 - smoothstep(0.85, 1.6, r) * 0.3;                    // gentle vignette
+    return c;
   }
 
   vec3 wordsBG(vec2 uv, vec2 s, float aspect, float sharp, float stripe){
@@ -111,6 +167,8 @@ window.FlowBG = (() => {
       c = mix(c, smear, line * 0.45);
       c *= 0.8;
       c *= 1.0 - smoothstep(0.65, 1.55, r) * 0.6;
+    } else if (uMode > 1.5) {
+      c = liquidBG(s, aspect);
     } else {
       // ---------------- WORDS ("lens" scene from the reel)
       // the whole cover, enlarged, sharp around the subject (right of centre)
@@ -231,7 +289,7 @@ window.FlowBG = (() => {
   function resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     let w = innerWidth * dpr, h = innerHeight * dpr;
-    const max = 6.0e6; // keep 4K screens smooth
+    const max = 2.6e6; // keep big / Retina screens smooth (and the battery happy)
     if (w * h > max) { const k = Math.sqrt(max / (w * h)); w *= k; h *= k; }
     canvas.width = Math.max(2, w | 0);
     canvas.height = Math.max(2, h | 0);

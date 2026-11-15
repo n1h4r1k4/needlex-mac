@@ -1065,7 +1065,7 @@ function frame(t) {
   // after leaving the lyrics so the fade is smooth)
   if (window.FlowBG && S.settings.lyricBg === 'liquid' && (lyr || t < S.glUntil)) {
     if (lyr) S.glUntil = t + 1200;
-    FlowBG.draw({ time: t / 1000, level: smooth, mode: 0, pix: 0, glitch: 0, seed: (S.track ? hashStr(S.track.key) % 97 : 0) / 10 });
+    FlowBG.draw({ time: t / 1000 + (DEMO ? Number(DEMO.get('lt') || 0) : 0), level: smooth, mode: 2, pix: 0, glitch: 0, seed: (S.track ? hashStr(S.track.key) % 97 : 0) / 10 });
   }
   if (window.Glitter) Glitter.draw(t, smooth, playing);
   if (window.EdgeLight && S.settings.glow) EdgeLight.draw(t, smooth, playing, S.lightRGB || [236, 226, 232], lyr ? 1 : 0.7);
