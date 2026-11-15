@@ -3,6 +3,7 @@ mod display;
 mod helper;
 mod hover;
 mod idle;
+mod location;
 mod lock;
 mod lyrics;
 mod mac;
@@ -75,7 +76,6 @@ fn wall_page(look: &str) -> Option<&'static str> {
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     pub floating: bool,
-    pub live_lyrics: bool,
     pub hide_idle: bool,
     pub glow: bool,
     /// Open the full-screen view after this many idle minutes (0 = off).
@@ -113,7 +113,6 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             floating: false,
-            live_lyrics: true,
             hide_idle: true,
             glow: true,
             auto_full_minutes: 3,
@@ -464,7 +463,6 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
 
     let hide_notch = check("hide_notch", "Hide notch", s.notch_hidden)?;
     let floating = check("floating", "Floating island (pill shape)", s.floating)?;
-    let live = check("live", "Live lyrics under the island", s.live_lyrics)?;
     let hide = check("hide", "Hide when nothing is playing", s.hide_idle)?;
     let glow = check("glow", "Beat glow", s.glow)?;
     let auto = check("autostart", "Launch at login", autostart_on)?;
@@ -473,7 +471,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let lockscreen = check("lockscreen", "Also on the lock screen", s.lock_screen)?;
 
     let mut items: Vec<CheckMenuItem<Wry>> = vec![
-        hide_notch.clone(), floating.clone(), live.clone(), hide.clone(), glow.clone(), auto.clone(),
+        hide_notch.clone(), floating.clone(), hide.clone(), glow.clone(), auto.clone(),
         vis.clone(), glass.clone(), lockscreen.clone(),
     ];
 
@@ -565,7 +563,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         .item(&idle_menu)
         .item(&glit_menu)
         .separator()
-        .items(&[&floating, &live, &hide, &glow, &vis, &glass])
+        .items(&[&floating, &hide, &glow, &vis, &glass])
         .separator()
         .item(&auto)
         .separator()
@@ -615,12 +613,11 @@ fn on_menu(app: &AppHandle, id: &str) {
             }
         }
         "perm_automation" => mac::open_url("x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"),
-        "floating" | "live" | "hide" | "glow" | "visualizer" | "glass" | "lockscreen" => {
+        "floating" | "hide" | "glow" | "visualizer" | "glass" | "lockscreen" => {
             let mut new_val = false;
             update_setting(app, |s| {
                 let field = match id {
                     "floating" => &mut s.floating,
-                    "live" => &mut s.live_lyrics,
                     "hide" => &mut s.hide_idle,
                     "visualizer" => &mut s.visualizer,
                     "glass" => &mut s.glass,
@@ -821,6 +818,16 @@ fn main() {
                     std::thread::sleep(std::time::Duration::from_secs(secs));
                     let h3 = h.clone();
                     let _ = h.run_on_main_thread(move || lock::hide(&h3));
+                });
+            }
+            if std::env::var_os("NEEDLEX_DEBUG_WEATHER").is_some() {
+                // looks up the weather once at start and prints the result
+                let h = handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    match weather::get_weather(h).await {
+                        Ok(w) => eprintln!("[weather] {}", serde_json::to_string(&w).unwrap_or_default()),
+                        Err(e) => eprintln!("[weather] error: {e}"),
+                    }
                 });
             }
             if std::env::var_os("NEEDLEX_DEBUG_DEMO").is_some() {

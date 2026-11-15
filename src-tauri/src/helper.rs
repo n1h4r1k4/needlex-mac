@@ -3,7 +3,7 @@
 //!
 //! * real-time output level for the visualizer and beat glow (`audio:level`)
 //! * screenshots of the area behind the island for the liquid glass
-//! * the Mac's location (weather) and calendar events (island pages)
+//! * the town's name for the weather, and calendar events (island pages)
 //!
 //! If the helper is missing or keeps failing, NeedleX simply runs without
 //! those two extras (the UI has fallbacks for both).
@@ -21,7 +21,7 @@ use crate::AppState;
 struct Helper {
     stdin: Mutex<Option<ChildStdin>>,
     snap_waiter: Mutex<Option<Sender<Result<(), String>>>>,
-    /// callers waiting for a `loc` / `cal` answer
+    /// callers waiting for a `geo` / `cal` answer
     waiters: Mutex<Vec<(&'static str, Sender<Result<String, String>>)>>,
 }
 
@@ -34,9 +34,15 @@ fn helper() -> &'static Helper {
 /// Sends `cmd` and waits for the helper's answer line starting with `cmd `
 /// (or `cmd err …`). Blocking – call it off the main thread.
 pub fn ask(cmd: &'static str, timeout: Duration) -> Result<String, String> {
+    ask_line(cmd, cmd, timeout)
+}
+
+/// Like `ask`, for a command with arguments: sends `line`, waits for the
+/// answer starting with `key `.
+pub fn ask_line(key: &'static str, line: &str, timeout: Duration) -> Result<String, String> {
     let (tx, rx) = mpsc::channel();
-    helper().waiters.lock().unwrap().push((cmd, tx));
-    if !send(cmd) {
+    helper().waiters.lock().unwrap().push((key, tx));
+    if !send(line) {
         return Err("helper not running".into());
     }
     rx.recv_timeout(timeout).map_err(|_| "timed out".to_string())?
@@ -117,8 +123,8 @@ pub fn spawn(app: AppHandle) {
                         if let Some(w) = helper().snap_waiter.lock().unwrap().take() {
                             let _ = w.send(res);
                         }
-                    } else if let Some(r) = line.strip_prefix("loc ") {
-                        answer("loc", r);
+                    } else if let Some(r) = line.strip_prefix("geo ") {
+                        answer("geo", r);
                     } else if let Some(r) = line.strip_prefix("cal ") {
                         answer("cal", r);
                     } else if let Some(msg) = line.strip_prefix("log ") {

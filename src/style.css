@@ -78,7 +78,7 @@ img { -webkit-user-drag: none; }
 }
 #island.glassy .shell { background: rgba(0,0,0,.0); }
 #island .shell { transition: border-radius .62s var(--spring), box-shadow .4s ease, background-color .35s ease; }
-body.snapping #live, body.snapping #island .glow { opacity: 0 !important; transition: none !important; }
+body.snapping #island .glow { opacity: 0 !important; transition: none !important; }
 #island.glassy .glass,
 #island.glassy .glass-shade { opacity: 1; }
 #island.glassy .tint { opacity: .45 !important; }
@@ -345,46 +345,6 @@ body.no-glow #island .glow { display: none; }
 .p-bars i { width: 3.5px; }
 .f-bars { height: 30px; gap: 3.5px; align-self: flex-start; margin-top: 4px; }
 .f-bars i { width: 4px; }
-
-/* ---------------------------------------------------------------- live lyric */
-
-#live {
-  position: absolute;
-  left: 0; right: 0;
-  top: 46px;
-  display: flex; justify-content: center;
-  pointer-events: none;
-  opacity: 0;
-  transform: translateY(-8px) scale(.96);
-  transition: opacity .4s ease, transform .5s var(--spring), top .5s var(--ease);
-}
-#live.show { opacity: 1; transform: none; }
-.live-pill {
-  position: relative;
-  max-width: 520px;
-  height: 34px;
-  padding: 0 18px;
-  border-radius: 17px;
-  background: rgba(0, 0, 0, .78);
-  box-shadow: 0 8px 24px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.06);
-  display: grid;
-  align-items: center;
-  transition: width .5s var(--spring);
-  overflow: hidden;
-}
-.live-pill span {
-  grid-area: 1 / 1;
-  font-size: 14px; font-weight: 650;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  text-align: center;
-  background: linear-gradient(90deg, #fff 0 var(--p, 0%), rgba(255,255,255,.42) var(--p, 0%) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  transition: opacity .35s ease, transform .45s var(--spring), filter .35s ease;
-}
-.live-pill span.out { opacity: 0; transform: translateY(-14px); filter: blur(4px); }
-.live-pill span.in-start { opacity: 0; transform: translateY(14px); filter: blur(4px); transition: none; }
 
 /* ---------------------------------------------------------------- drag + magnet */
 #island::before, #island::after {

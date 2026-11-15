@@ -1,9 +1,10 @@
 //! Weather and calendar for the island's extra pages.
 //!
-//! * Weather: where the Mac is (Location Services, through the helper, kept
-//!   for an hour and rounded to ~1 km) → the forecast from Open-Meteo (free,
-//!   no account), kept for 15 minutes. The page shows now, today's high / low
-//!   and the next hours.
+//! * Weather: where the Mac is (Location Services, asked by the app itself –
+//!   see location.rs – kept for an hour and rounded to ~1 km; the town's name
+//!   comes from Apple's geocoder through the helper) → the forecast from
+//!   Open-Meteo (free, no account), kept for 15 minutes. The page shows now,
+//!   today's high / low and the next hours.
 //! * Calendar: today's and tomorrow's events from the Calendar app (through
 //!   the helper); they never leave the Mac.
 
@@ -14,7 +15,7 @@ use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Manager};
 
-use crate::{helper, AppState};
+use crate::{helper, location, AppState};
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -60,11 +61,14 @@ fn location(app: &AppHandle) -> Result<(f64, f64, String), String> {
         }
     }
     // the first time macOS asks for permission – give the user time to answer
-    let line = helper::ask("loc", Duration::from_secs(90))?;
-    let mut it = line.splitn(3, ' ');
-    let lat: f64 = it.next().and_then(|v| v.parse().ok()).ok_or("bad location")?;
-    let lon: f64 = it.next().and_then(|v| v.parse().ok()).ok_or("bad location")?;
-    let city = it.next().unwrap_or("").trim().to_string();
+    let (lat, lon) = location::current(app, Duration::from_secs(120))?;
+    // the town's name (no permission needed); the weather works without it
+    let city = helper::ask_line("geo", &format!("geo {lat:.3} {lon:.3}"), Duration::from_secs(10))
+        .map(|c| c.trim().to_string())
+        .unwrap_or_default();
+    if crate::debug() {
+        eprintln!("[weather] location found, town {city:?}");
+    }
     state.weather.lock().unwrap().place = Some((Instant::now(), lat, lon, city.clone()));
     Ok((lat, lon, city))
 }

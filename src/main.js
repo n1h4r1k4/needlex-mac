@@ -17,7 +17,7 @@ function islandDemo(q) {
   const art = mk(300, 300, (g) => { const gr = g.createLinearGradient(0, 0, 300, 300); gr.addColorStop(0, '#1e3a8a'); gr.addColorStop(1, '#0b0b1a'); g.fillStyle = gr; g.fillRect(0, 0, 300, 300); g.fillStyle = '#e11d48'; g.fillRect(40, 60, 220, 70); });
   document.body.style.background = `url(${desk}) 0 0 / 100% 100%`;
   setTimeout(() => {
-    h['settings']?.({ payload: { floating: false, liveLyrics: true, hideIdle: true, glow: true } });
+    h['settings']?.({ payload: { floating: false, hideIdle: true, glow: true } });
     h['media:track']?.({ payload: { key: 'd', title: 'All I Know', artist: 'The Weeknd', album: 'Starboy', art, source: 'demo', sourceName: 'Spotify' } });
     h['media:state']?.({ payload: { active: true, playing: true, positionMs: 61000, durationMs: 321000, hasTimeline: true, canNext: true, canPrev: true, canSeek: true } });
     const v = q.get('view') || 'expanded';
@@ -31,7 +31,7 @@ function islandDemo(q) {
     invoke: async (cmd) => {
       if (cmd === 'capture_backdrop') return desk;
       if (cmd === 'fetch_lyrics') return { found: true, instrumental: false, plain: null, synced: [{ time: 58000, text: 'All I know is this' }, { time: 62000, text: 'all I know, all I know' }, { time: 66000, text: 'Every time I ride with you' }] };
-      if (cmd === 'get_settings') return { floating: false, liveLyrics: true, hideIdle: true, glow: true };
+      if (cmd === 'get_settings') return { floating: false, hideIdle: true, glow: true };
       if (cmd === 'get_weather') {
         const hrs = [[16, 26, 2, 10], [17, 25, 3, 20], [18, 24, 61, 60], [19, 23, 61, 70], [20, 22, 3, 30], [21, 21, 2, 10]];
         return { city: 'Bengaluru', temp: 26, code: 3, isDay: true, high: 27, low: 19, now: '2026-11-15T15:45',
@@ -84,7 +84,7 @@ const S = {
   level: 0,
   lastLevelAt: 0,
   gotLevel: false,
-  settings: { floating: false, liveLyrics: true, hideIdle: true, glow: true },
+  settings: { floating: false, hideIdle: true, glow: true },
   hover: false,
   hoverT: 0,
   peekUntil: 0,
@@ -247,7 +247,6 @@ function render() {
     S.lyrIdx = -2;
     requestAnimationFrame(updateMarquee);
   }
-  updateLiveVisibility();
 }
 
 function updateMarquee() {
@@ -268,7 +267,7 @@ function setTrack(t) {
   if (!t || !t.key) {
     S.track = null;
     clearTimeout(S.lyrT);
-    S.lyrics = null; S.lyricsState = 'none'; liveText = null; setLive('');
+    S.lyrics = null; S.lyricsState = 'none';
     render();
     return;
   }
@@ -369,7 +368,6 @@ function scheduleLyrics(t) {
   clearTimeout(S.lyrT);
   S.lyrics = null;
   S.lyricsState = 'loading';
-  liveText = null; setLive('');
   buildLyrics();
   // wait a moment so we know the song's duration (used to pick the right version)
   S.lyrT = setTimeout(() => fetchLyrics(t, 0), 700);
@@ -449,44 +447,6 @@ function setActive(idx) {
     const y = el.offsetTop + el.offsetHeight / 2 - 270 * 0.42;
     $('.lyr-inner').style.transform = `translateY(${-Math.max(-80, y)}px)`;
   }
-  const line = idx >= 0 ? S.lyrics.synced[idx] : null;
-  setLive(line ? line.text : '');
-}
-
-// ------------------------------------------------------------ live lyric pill
-
-const live = $('#live');
-const livePill = $('.live-pill');
-const liveSpans = [$('.live-a'), $('.live-b')];
-let liveCur = 0;
-let liveText = null;
-const measureCtx = document.createElement('canvas').getContext('2d');
-
-function setLive(text) {
-  if (text === liveText) return;
-  liveText = text;
-  const out = liveSpans[liveCur];
-  liveCur ^= 1;
-  const inn = liveSpans[liveCur];
-  out.classList.add('out');
-  inn.classList.remove('out');
-  inn.textContent = text;
-  inn.style.setProperty('--p', '0%');
-  inn.classList.add('in-start');
-  void inn.offsetWidth;
-  inn.classList.remove('in-start');
-  if (text) {
-    measureCtx.font = `650 14px ${getComputedStyle(document.body).fontFamily}`;
-    const w = Math.min(520, Math.max(110, measureCtx.measureText(text).width + 40));
-    livePill.style.width = w + 'px';
-  }
-  updateLiveVisibility();
-}
-
-function updateLiveVisibility() {
-  const show = S.settings.liveLyrics && !!liveText && !!S.track && S.play.playing && S.view === 'compact';
-  live.classList.toggle('show', show);
-  live.style.top = ((S.settings.floating ? 8 : 0) + SIZES.compact.h + 8) + 'px';
 }
 
 // ------------------------------------------------------------ controls
@@ -702,16 +662,8 @@ function frame(t) {
 
     // synced lyrics
     if (S.lyrics && S.lyrics.synced && S.lyrics.synced.length) {
-      const L = S.lyrics.synced;
-      const lp = p + LYRIC_LEAD_MS;
-      const idx = lyricIndex(lp);
+      const idx = lyricIndex(p + LYRIC_LEAD_MS);
       if (idx !== S.lyrIdx) setActive(idx);
-      if (idx >= 0 && live.classList.contains('show')) {
-        const start = L[idx].time;
-        const end = idx + 1 < L.length ? L[idx + 1].time : start + 4000;
-        const prog = Math.min(1, Math.max(0, (lp - start) / Math.max(400, (end - start) * 0.9)));
-        liveSpans[liveCur].style.setProperty('--p', (prog * 100).toFixed(1) + '%');
-      }
     }
   }
 

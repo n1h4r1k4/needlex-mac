@@ -3,12 +3,12 @@
 // stdin  (one command per line):
 //   audio on | audio off
 //   snap <x> <y> <w> <h> <out.jpg>      (global points, top-left origin)
-//   loc                                 where the Mac is (for the weather)
+//   geo <lat> <lon>                     the town there (for the weather)
 //   cal                                 today's and tomorrow's events
 // stdout (one event per line):
 //   lvl <peak 0…1>                      ~30×/s while audio is on and not silent
 //   snap ok | snap err <reason>
-//   loc <lat> <lon> <city> | loc err <reason>
+//   geo <town> | geo err <reason>
 //   cal <json array> | cal err <reason>
 //   log <text>
 //
@@ -17,9 +17,9 @@
 //   computed; no audio is stored or sent anywhere.
 // * Snap: ScreenCaptureKit screenshot of a small screen area with NeedleX's
 //   own windows left out (macOS 14+, asks for "Screen Recording").
-// * Loc / cal: Location Services (to about a kilometre) and the Calendar
-//   app's events, for the weather and calendar pages of the island; macOS
-//   asks once for each.
+// * Geo / cal: the town's name for the weather page (Apple's geocoder; NeedleX
+//   itself asks for the location, as macOS only asks real apps) and the
+//   Calendar app's events for the calendar page (macOS asks once).
 
 import AppKit
 import AudioToolbox
@@ -246,58 +246,18 @@ func snap(_ rect: CGRect, to path: String) async {
 
 // ------------------------------------------------------------------ location
 
-final class Locator: NSObject, CLLocationManagerDelegate {
-    private let manager = CLLocationManager()
-    private var pending = false
-
-    override init() {
-        super.init()
-        manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyKilometer
-    }
-
-    /// Main thread only.
-    func request() {
-        pending = true
-        switch manager.authorizationStatus {
-        case .notDetermined: manager.requestWhenInUseAuthorization() // answer arrives below
-        case .denied, .restricted: finish("loc err denied")
-        default: manager.requestLocation()
+// the town at a place (no permission needed)
+let geocoder = CLGeocoder()
+func town(_ lat: Double, _ lon: Double) {
+    geocoder.reverseGeocodeLocation(CLLocation(latitude: lat, longitude: lon)) { marks, error in
+        let m = marks?.first
+        if let name = m?.locality ?? m?.subAdministrativeArea ?? m?.administrativeArea {
+            say("geo " + name)
+        } else {
+            say("geo err " + (error?.localizedDescription ?? "unknown").replacingOccurrences(of: "\n", with: " "))
         }
-    }
-
-    private func finish(_ line: String) {
-        guard pending else { return }
-        pending = false
-        say(line)
-    }
-
-    func locationManagerDidChangeAuthorization(_ m: CLLocationManager) {
-        guard pending else { return }
-        switch m.authorizationStatus {
-        case .notDetermined: break
-        case .denied, .restricted: finish("loc err denied")
-        default: m.requestLocation()
-        }
-    }
-
-    func locationManager(_ m: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard pending, let l = locations.last else { return }
-        CLGeocoder().reverseGeocodeLocation(l) { marks, _ in
-            let m = marks?.first
-            let city = m?.locality ?? m?.subAdministrativeArea ?? m?.administrativeArea ?? ""
-            DispatchQueue.main.async {
-                self.finish(String(format: "loc %.3f %.3f ", l.coordinate.latitude, l.coordinate.longitude) + city)
-            }
-        }
-    }
-
-    func locationManager(_ m: CLLocationManager, didFailWithError error: Error) {
-        finish("loc err " + error.localizedDescription.replacingOccurrences(of: "\n", with: " "))
     }
 }
-
-let locator = Locator()
 
 // ------------------------------------------------------------------ calendar
 
@@ -368,8 +328,12 @@ func handle(_ line: String) {
         } else {
             say("snap err needs macOS 14")
         }
-    case "loc":
-        DispatchQueue.main.async { locator.request() }
+    case "geo":
+        guard parts.count >= 3, let lat = Double(parts[1]), let lon = Double(parts[2]) else {
+            say("geo err bad request")
+            return
+        }
+        DispatchQueue.main.async { town(lat, lon) }
     case "cal":
         DispatchQueue.main.async { calendarEvents() }
     case "quit":
