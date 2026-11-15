@@ -1,0 +1,51 @@
+name: Release
+
+# Push a version tag (e.g. v0.2.0, matching tauri.conf.json) to build NeedleX for
+# Apple silicon + Intel and publish the disk image and zip as a GitHub release.
+# "Run workflow" by hand only builds and keeps the files as a workflow artifact.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - name: Build the app, disk image and zip
+        run: ./scripts/release.sh
+      - name: Keep the files
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeedleX
+          path: dist/*
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          # this version's part of the changelog, then how to install
+          awk -v v="$VERSION" '$0 ~ "^## " v "( |$)" {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
+          cat .github/release-install.md >> notes.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --title "NeedleX $VERSION" --notes-file notes.md
+          fi

@@ -16,6 +16,8 @@ player on your lock screen.
 ![Swift helper](https://img.shields.io/badge/Swift-helper-F05138?logo=swift&logoColor=white)
 [![CI](https://github.com/n1h4r1k4/needlex-mac/actions/workflows/ci.yml/badge.svg)](https://github.com/n1h4r1k4/needlex-mac/actions/workflows/ci.yml)
 
+[**⬇ Download NeedleX for Mac**](https://github.com/n1h4r1k4/needlex-mac/releases/latest) · Apple silicon and Intel · macOS 13+
+
 <img src="docs/images/fx-words.jpg" width="900" alt="Big Words lyrics effect in full screen" />
 
 </div>
@@ -166,11 +168,24 @@ Click the cover in the open island, or let NeedleX open by itself after a few id
   glass needs macOS 14, and the real audio visualizer needs macOS 14.2.
 - **Spotify** or **Apple Music** (the Music app). Browser tabs and other players can't be followed,
   because macOS has no public "now playing" interface.
-- To build it you need the free Xcode Command Line Tools, Rust and Node.js.
+- Building it yourself (optional) needs the free Xcode Command Line Tools, Rust and Node.js.
 
 ## Install
 
-There's no signed download yet, so you build NeedleX yourself. It takes a few minutes.
+### Download (easiest)
+
+1. Download **NeedleX-…dmg** from the [latest release](https://github.com/n1h4r1k4/needlex-mac/releases/latest).
+2. Open it and drag **NeedleX** into **Applications**.
+3. Open NeedleX from Applications. NeedleX isn't notarized by Apple (that needs a paid developer
+   account), so the first time macOS says it can't check it:
+   - go to **System Settings → Privacy & Security**, scroll down, click **Open Anyway** next to
+     NeedleX and confirm. You only do this once;
+   - or run `xattr -dr com.apple.quarantine /Applications/NeedleX.app` in Terminal, then open it.
+4. Play something in Spotify or Music, and allow NeedleX to control it when macOS asks.
+
+### Build it yourself
+
+It takes a few minutes and needs the free developer tools:
 
 ```bash
 # 1. tools (once)
@@ -194,8 +209,8 @@ open /Applications/NeedleX.app
 
 NeedleX is a menu-bar app: it has no Dock icon, and everything is in its tray menu at the top right.
 
-To update later, run `git pull`, `npm run build` and copy the app again. To uninstall, quit it from
-the tray, then delete `/Applications/NeedleX.app`, `~/Library/Application Support/com.needlex.island`
+To update, download the new release (or run `git pull` and `npm run build` again) and replace the
+app in Applications. To uninstall, quit it from the tray, then delete `/Applications/NeedleX.app`, `~/Library/Application Support/com.needlex.island`
 and `~/Library/Caches/com.needlex.island`.
 
 ## Using NeedleX
@@ -238,6 +253,13 @@ NeedleX contacts these services:
 - **Apple's geocoder** for the name of your town. It sends coordinates.
 
 ## Troubleshooting
+
+<details>
+<summary><b>"NeedleX can't be opened" / "Apple could not verify…" / "is damaged"</b></summary>
+
+NeedleX isn't notarized, so macOS asks you to confirm it once. Go to *System Settings → Privacy &
+Security* and click *Open Anyway*, or run `xattr -dr com.apple.quarantine /Applications/NeedleX.app`.
+</details>
 
 <details>
 <summary><b>macOS keeps asking for a permission after every build</b></summary>
