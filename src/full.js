@@ -155,6 +155,18 @@ function hsl2rgb(h, s, l) {
 const rgbStr = (c) => c.map((v) => Math.round(v)).join(', ');
 
 // up to 6 distinct, glowing colours of the cover (for album-coloured glitter)
+// the vivid tone of the cover, for when it has few colours of its own
+function accentOf(d) {
+  let vr = 0, vg = 0, vb = 0, vw = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    const [, s, l] = rgb2hsl(d[i], d[i + 1], d[i + 2]);
+    const w = s * s * Math.max(0, 1 - Math.abs(l - 0.55) * 1.8) + 0.0005;
+    vr += d[i] * w; vg += d[i + 1] * w; vb += d[i + 2] * w; vw += w;
+  }
+  const [h, s] = rgb2hsl(vr / vw, vg / vw, vb / vw);
+  return hsl2rgb(h, Math.max(s, 0.55), 0.66);
+}
+
 function albumColours(d) {
   const bins = Array.from({ length: 12 }, () => ({ r: 0, g: 0, b: 0, w: 0 }));
   for (let i = 0; i < d.length; i += 4) {
@@ -202,7 +214,14 @@ function applyPalette(img) {
   const root = document.documentElement.style;
   root.setProperty('--light', rgbStr(light));
   S.lightRGB = light;
-  if (window.Glitter) Glitter.setPalette(albumColours(d));
+  const cols = albumColours(d);
+  if (window.Glitter) Glitter.setPalette(cols);
+  // beat glow: the cover's own colours (without the white sparkle); a grey
+  // cover still gets its accent and light tones
+  if (window.EdgeLight) {
+    const vivid = cols.slice(0, -1);
+    EdgeLight.setPalette(vivid.length >= 2 ? vivid : [...vivid, accentOf(d), light].slice(0, 3));
+  }
   root.setProperty('--dark', rgbStr(dark));
   root.setProperty('--accent', rgbStr(accent));
 }

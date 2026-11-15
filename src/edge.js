@@ -3,6 +3,8 @@
 //  * brighter sections keep circling around the edge – faster and longer when
 //    the music is loud – and strong beats fire a short comet that races around
 //  * only a soft, subdued glow spreads inward: the line is the star, not the haze
+//  * in the cover's colours: up to five of them flow around the edge and slowly
+//    rotate (beats give them a push); the line keeps a bright, still-coloured core
 window.EdgeLight = (() => {
   const canvas = document.getElementById('edge-gl');
   const gl = canvas && canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false });
@@ -16,8 +18,18 @@ window.EdgeLight = (() => {
   out vec4 o;
   uniform vec2 uRes;
   uniform float uDpr, uRadius, uLevel, uBase;
-  uniform vec3 uColor;
+  uniform vec3 uPal[5];      // the cover's colours
+  uniform float uPalN, uShift;
   uniform vec3 uSeg[${N}];   // x = centre (0..1 of perimeter), y = length (0..1), z = brightness
+
+  // colour at a point of the perimeter: the palette spread around the edge
+  vec3 palAt(float u){
+    float n = max(uPalN, 1.0);
+    float x = fract(u + uShift) * n;
+    int i = int(floor(x));
+    int j = i + 1 >= int(n) ? 0 : i + 1;
+    return mix(uPal[i], uPal[j], smoothstep(0.15, 0.85, fract(x)));
+  }
 
   float segI(float u){
     float I = 0.0;
@@ -52,14 +64,16 @@ window.EdgeLight = (() => {
     // perimeter runs clockwise from the top-left corner; every edge lights the
     // pixel on its own, so corners blend smoothly
     float P = 2.0 * (W + H);
-    vec2 e = edge(yT / uDpr, x / P)
-           + edge((W - x) / uDpr, (W + yT) / P)
-           + edge(q.y / uDpr, (W + H + (W - x)) / P)
-           + edge(x / uDpr, (2.0 * W + H + (H - yT)) / P);
+    float u1 = x / P, u2 = (W + yT) / P, u3 = (W + H + (W - x)) / P, u4 = (2.0 * W + H + (H - yT)) / P;
+    vec2 e1 = edge(yT / uDpr, u1), e2 = edge((W - x) / uDpr, u2), e3 = edge(q.y / uDpr, u3), e4 = edge(x / uDpr, u4);
+    vec2 e = e1 + e2 + e3 + e4;
     float line = clamp(e.x, 0.0, 1.0);
     float a = clamp(line + e.y * 0.8, 0.0, 1.0);
     if (a <= 0.002) { o = vec4(0.0); return; }
-    vec3 col = mix(uColor, vec3(1.0), clamp(line * 0.9, 0.0, 1.0)); // white-hot core, tinted glow
+    // each edge brings its own colour (corners blend)
+    float w1 = e1.x + e1.y, w2 = e2.x + e2.y, w3 = e3.x + e3.y, w4 = e4.x + e4.y;
+    vec3 col = (palAt(u1) * w1 + palAt(u2) * w2 + palAt(u3) * w3 + palAt(u4) * w4) / max(w1 + w2 + w3 + w4, 1e-4);
+    col = mix(col, vec3(1.0), clamp(line * 0.3, 0.0, 0.3));         // bright core, still coloured
     o = vec4(col * a, a);
   }`;
 
@@ -85,7 +99,15 @@ window.EdgeLight = (() => {
   gl.enableVertexAttribArray(loc);
   gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
   const U = {};
-  for (const n of ['uRes', 'uDpr', 'uRadius', 'uLevel', 'uBase', 'uColor', 'uSeg']) U[n] = gl.getUniformLocation(prog, n);
+  for (const n of ['uRes', 'uDpr', 'uRadius', 'uLevel', 'uBase', 'uPal', 'uPalN', 'uShift', 'uSeg']) U[n] = gl.getUniformLocation(prog, n);
+
+  // the cover's colours ([[r,g,b] 0..255]); a single colour if that's all there is
+  let pal = [[236, 226, 232]];
+  let shift = 0;
+  function setPalette(colors) {
+    const ok = (colors || []).filter((c) => c && c.length >= 3).slice(0, 5);
+    if (ok.length) pal = ok;
+  }
 
   // two sections chase each other around the edge (opposite sides)
   const runners = [{ c: 0.12, dir: 1 }, { c: 0.62, dir: 1 }];
@@ -137,13 +159,11 @@ window.EdgeLight = (() => {
     // the whole edge breathes with the music (quiet → faint rim, loud → bright rim)
     const base = (playing ? 0.1 + lv * 0.5 + punch * 0.45 : 0.06) * strength;
 
-    // warm white, tinted a little by the cover
-    const k = 0.35;
-    const col = [
-      (255 * (1 - k) + color[0] * k) / 255,
-      (244 * (1 - k) + color[1] * k) / 255,
-      (226 * (1 - k) + color[2] * k) / 255,
-    ];
+    // the colours drift around the edge; the music (and beats) push them along
+    shift = (shift + dt * (0.012 + lv * 0.05 + punch * 0.08)) % 1;
+    const palette = pal.length ? pal : [color];
+    const flat = new Float32Array(15);
+    palette.forEach((c, i) => flat.set([c[0] / 255, c[1] / 255, c[2] / 255], i * 3));
 
     gl.useProgram(prog);
     gl.clearColor(0, 0, 0, 0);
@@ -153,11 +173,13 @@ window.EdgeLight = (() => {
     gl.uniform1f(U.uRadius, 12);
     gl.uniform1f(U.uLevel, lv);
     gl.uniform1f(U.uBase, base);
-    gl.uniform3f(U.uColor, col[0], col[1], col[2]);
+    gl.uniform3fv(U.uPal, flat);
+    gl.uniform1f(U.uPalN, palette.length);
+    gl.uniform1f(U.uShift, shift);
     gl.uniform3fv(U.uSeg, seg);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
   resize();
-  return { draw, resize };
+  return { draw, resize, setPalette };
 })();
