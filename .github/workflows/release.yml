@@ -1,8 +1,16 @@
 name: Release
 
-# Push a version tag (e.g. v0.2.0, matching tauri.conf.json) to build NeedleX for
-# Apple silicon + Intel and publish the disk image and zip as a GitHub release.
-# "Run workflow" by hand only builds and keeps the files as a workflow artifact.
+# Releases are usually published from a Mac with `npm run release`
+# (scripts/release.sh --publish), which signs the update with the updater key
+# kept on that Mac. That also creates the version tag, which starts this
+# workflow: it sees the release is already there and does nothing.
+#
+# It can build and publish a release itself when you push a version tag
+# (e.g. v0.2.0, matching tauri.conf.json), if the repository has the updater key
+# as the secrets TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
+# Without them it stops instead: a release without the signed update would stop
+# in-app updates. "Run workflow" by hand only builds and keeps the files as a
+# workflow artifact.
 on:
   push:
     tags: ['v*']
@@ -14,51 +22,54 @@ permissions:
 jobs:
   release:
     runs-on: macos-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+      IS_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
     steps:
+      - name: Already published?
+        id: published
+        run: |
+          if [ "$IS_TAG" = true ] && gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::notice::$TAG is already published (from a Mac with npm run release); nothing to do"
+            echo "yes=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v4
+        if: steps.published.outputs.yes != 'true'
       - uses: actions/setup-node@v4
+        if: steps.published.outputs.yes != 'true'
         with:
           node-version: 20
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.published.outputs.yes != 'true'
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2
+        if: steps.published.outputs.yes != 'true'
         with:
           workspaces: src-tauri
       - run: npm ci
+        if: steps.published.outputs.yes != 'true'
       - name: Build the app, disk image, zip and update
+        if: steps.published.outputs.yes != 'true'
         env:
           # signs the update for the in-app updater (tauri.conf.json has the public key)
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: ./scripts/release.sh
       - name: Keep the files
+        if: steps.published.outputs.yes != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: NeedleX
           path: dist/*
       - name: Publish the release
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+        if: steps.published.outputs.yes != 'true' && env.IS_TAG == 'true'
         run: |
-          VERSION="${TAG#v}"
-          # docs/releases/<tag>.md if there is one (title on its own first
-          # line as "<!-- title: … -->"), else this version's part of the
-          # changelog followed by how to install
-          TITLE="NeedleX $VERSION"
-          if [ -f "docs/releases/$TAG.md" ]; then
-            cp "docs/releases/$TAG.md" notes.md
-            T="$(sed -n '1s/^<!-- title: \(.*\) -->$/\1/p' notes.md)"
-            [ -n "$T" ] && TITLE="$T"
-          else
-            awk -v v="$VERSION" '$0 ~ "^## " v "( |$)" {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
-            cat .github/release-install.md >> notes.md
+          if [ ! -f dist/latest.json ]; then
+            echo "::error::No updater key in the repository secrets, so the update isn't signed. Publish from a Mac with npm run release, or add the secrets."
+            exit 1
           fi
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/* --clobber
-          else
-            gh release create "$TAG" dist/* --title "$TITLE" --notes-file notes.md
-          fi
+          TITLE="$(./scripts/release-notes.sh "${TAG#v}" notes.md)"
+          gh release create "$TAG" dist/* --title "$TITLE" --notes-file notes.md --latest

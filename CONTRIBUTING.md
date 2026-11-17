@@ -52,6 +52,25 @@ the script uses the demo song. To use real songs, first make a song file for eac
 `scripts/screenshots/song.py`, which takes a cover URL and an LRCLIB id. Then pass the files as
 `SONG_A=a.js SONG_B=b.js ./scripts/screenshots.sh`. Keep those song files out of the repository.
 
+## Releasing
+
+Installed copies of NeedleX update themselves from the latest GitHub release. They only accept an
+update that is signed with the updater key, which the maintainer keeps in `~/.needlex-signing/`
+(`updater.key` and `updater-password`, made with `npx tauri signer generate`).
+
+1. Set the new version in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `package.json`.
+2. Rename *Unreleased* in `CHANGELOG.md` to `## <version> – <date>`. This becomes the update's
+   notes. You can also add `docs/releases/v<version>.md` for the release page.
+3. Commit and push `main`.
+4. Run `npm run release`. It builds the universal app, disk image, zip and signed update in
+   `dist/`, then publishes the GitHub release `v<version>`. It checks everything it needs before
+   the build starts.
+
+Installed copies offer the new version within a few hours, or right away with *Check for
+Updates…*. The *Release* workflow can also build releases on GitHub when a version tag is pushed,
+but only if the repository has the updater key as the secrets `TAURI_SIGNING_PRIVATE_KEY` and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+
 ## Code style
 
 - **JavaScript / CSS / HTML:** plain files with no framework and no bundler. Keep them that way.

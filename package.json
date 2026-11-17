@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build && ./scripts/sign-local.sh",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "release": "./scripts/release.sh --publish"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"
