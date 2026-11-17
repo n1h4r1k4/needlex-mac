@@ -154,7 +154,25 @@ pub fn spawn(app: AppHandle) {
                     crate::rebuild_menu(&app);
                 }
             }
+            keep_on_all_spaces(&app);
             std::thread::sleep(Duration::from_millis(1200));
+        }
+    });
+}
+
+/// The island, the full-screen view and the wallpaper belong on every Space,
+/// full-screen apps' too. macOS sometimes drops them from some Spaces, and the
+/// notch then goes missing next to those apps: put them back.
+fn keep_on_all_spaces(app: &AppHandle) {
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        for label in ["main", "full", "wall"] {
+            let Some(w) = a.get_webview_window(label) else { continue };
+            let Ok(ns) = w.ns_window() else { continue };
+            let back = mac::rejoin_all_spaces(ns);
+            if !back.is_empty() {
+                eprintln!("NeedleX: {label} window was missing from Spaces {back:?}, put it back");
+            }
         }
     });
 }

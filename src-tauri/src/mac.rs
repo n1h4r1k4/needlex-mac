@@ -214,6 +214,133 @@ pub fn set_wall_level(ns_window: *mut c_void, above_icons: bool) {
     }
 }
 
+// ---------------------------------------------------------------- Spaces
+//
+// The island, the full-screen view and the wallpaper are on every Space
+// (canJoinAllSpaces), full-screen ones included. Over a long session macOS sometimes drops such a
+// window from some Spaces anyway, and from then on it is missing there – the
+// notch shows up next to some apps but not others – until NeedleX restarts:
+// ordering the window in again or setting its collection behaviour again
+// doesn't bring it back. SkyLight (private, looked up at run time) can.
+
+const SKYLIGHT: &std::ffi::CStr = c"/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/SkyLight";
+const ALL_SPACES_MASK: i32 = 7; // kCGSAllSpacesMask
+
+struct SpaceApi {
+    cid: i32,
+    /// SLSCopyManagedDisplaySpaces → CFArray of { "Spaces": [{ "ManagedSpaceID": … }] } per display
+    display_spaces: unsafe extern "C" fn(i32) -> *mut AnyObject,
+    /// SLSCopySpacesForWindows(cid, mask, windows) → CFArray of space ids
+    window_spaces: unsafe extern "C" fn(i32, i32, *mut AnyObject) -> *mut AnyObject,
+    /// SLSAddWindowsToSpaces(cid, windows, spaces)
+    add: unsafe extern "C" fn(i32, *mut AnyObject, *mut AnyObject),
+}
+
+fn space_api() -> Option<&'static SpaceApi> {
+    static API: OnceLock<Option<SpaceApi>> = OnceLock::new();
+    API.get_or_init(|| unsafe {
+        let h = dlopen(SKYLIGHT.as_ptr(), 2);
+        if h.is_null() {
+            return None;
+        }
+        let sym = |name: &std::ffi::CStr| {
+            let p = dlsym(h, name.as_ptr());
+            (!p.is_null()).then_some(p)
+        };
+        let main_connection: unsafe extern "C" fn() -> i32 = std::mem::transmute(sym(c"SLSMainConnectionID")?);
+        Some(SpaceApi {
+            cid: main_connection(),
+            display_spaces: std::mem::transmute(sym(c"SLSCopyManagedDisplaySpaces")?),
+            window_spaces: std::mem::transmute(sym(c"SLSCopySpacesForWindows")?),
+            add: std::mem::transmute(sym(c"SLSAddWindowsToSpaces")?),
+        })
+    })
+    .as_ref()
+}
+
+/// Space ids in an NSArray of NSNumbers (a CFArray we own; released here).
+unsafe fn take_ids(list: *mut AnyObject) -> Vec<u64> {
+    if list.is_null() {
+        return Vec::new();
+    }
+    let n: usize = msg_send![list, count];
+    let ids = (0..n)
+        .map(|i| {
+            let v: *mut AnyObject = msg_send![list, objectAtIndex: i];
+            let id: u64 = msg_send![v, unsignedLongLongValue];
+            id
+        })
+        .collect();
+    CFRelease(list as *const c_void);
+    ids
+}
+
+unsafe fn all_spaces(api: &SpaceApi) -> Vec<u64> {
+    let displays = (api.display_spaces)(api.cid);
+    if displays.is_null() {
+        return Vec::new();
+    }
+    let k_spaces: *mut AnyObject = msg_send![class!(NSString), stringWithUTF8String: c"Spaces".as_ptr()];
+    let k_id: *mut AnyObject = msg_send![class!(NSString), stringWithUTF8String: c"ManagedSpaceID".as_ptr()];
+    let mut ids = Vec::new();
+    let nd: usize = msg_send![displays, count];
+    for i in 0..nd {
+        let d: *mut AnyObject = msg_send![displays, objectAtIndex: i];
+        let spaces: *mut AnyObject = msg_send![d, objectForKey: k_spaces];
+        if spaces.is_null() {
+            continue;
+        }
+        let ns: usize = msg_send![spaces, count];
+        for j in 0..ns {
+            let s: *mut AnyObject = msg_send![spaces, objectAtIndex: j];
+            let id: *mut AnyObject = msg_send![s, objectForKey: k_id];
+            if !id.is_null() {
+                let v: u64 = msg_send![id, unsignedLongLongValue];
+                ids.push(v);
+            }
+        }
+    }
+    CFRelease(displays as *const c_void);
+    ids
+}
+
+/// Puts a visible all-Spaces window (island, full-screen view, wallpaper) back
+/// on every Space macOS dropped it from. Cheap when nothing is missing; runs
+/// every second or so. Main thread only. Returns the Spaces it was put back on.
+pub fn rejoin_all_spaces(ns_window: *mut c_void) -> Vec<u64> {
+    if ns_window.is_null() {
+        return Vec::new();
+    }
+    let w = ns_window as *mut AnyObject;
+    // its own pool: the temporary arrays / strings are freed right away
+    objc2::rc::autoreleasepool(|_| unsafe {
+        // a hidden window is on no Space; it's put on all of them when shown
+        let visible: bool = msg_send![w, isVisible];
+        let Some(api) = space_api().filter(|_| visible) else { return Vec::new() };
+        let num: isize = msg_send![w, windowNumber];
+        if num <= 0 {
+            return Vec::new();
+        }
+        let n: *mut AnyObject = msg_send![class!(NSNumber), numberWithInt: num as i32];
+        let windows: *mut AnyObject = msg_send![class!(NSArray), arrayWithObject: n];
+        let on = take_ids((api.window_spaces)(api.cid, ALL_SPACES_MASK, windows));
+        if on.is_empty() {
+            return Vec::new(); // not on screen (yet)
+        }
+        let missing: Vec<u64> = all_spaces(api).into_iter().filter(|s| !on.contains(s)).collect();
+        if missing.is_empty() {
+            return missing;
+        }
+        let list: *mut AnyObject = msg_send![class!(NSMutableArray), arrayWithCapacity: missing.len()];
+        for s in &missing {
+            let v: *mut AnyObject = msg_send![class!(NSNumber), numberWithUnsignedLongLong: *s];
+            let _: () = msg_send![list, addObject: v];
+        }
+        (api.add)(api.cid, windows, list);
+        missing
+    })
+}
+
 // ---------------------------------------------------------------- lock screen
 //
 // The lock screen covers every normal window, whatever its level: it lives in
@@ -236,7 +363,7 @@ struct SkyLight {
 fn skylight() -> Option<&'static SkyLight> {
     static SKY: OnceLock<Option<SkyLight>> = OnceLock::new();
     SKY.get_or_init(|| unsafe {
-        let h = dlopen(c"/System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/SkyLight".as_ptr(), 2);
+        let h = dlopen(SKYLIGHT.as_ptr(), 2);
         if h.is_null() {
             return None;
         }

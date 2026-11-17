@@ -12,6 +12,8 @@ Notable changes to NeedleX for macOS. Dates are in YYYY-MM-DD format.
 
 - A hard-edged square showed behind the island's rounded bottom corners (most visible with the
   beat glow on a light background).
+- After a while the notch could go missing next to some apps (their full-screen Spaces) until
+  NeedleX restarted. It is now put back on every Space.
 
 ## 0.1.0 – 2026-11-15
 
