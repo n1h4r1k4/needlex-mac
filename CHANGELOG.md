@@ -4,6 +4,12 @@ Notable changes to NeedleX for macOS. Dates are in YYYY-MM-DD format.
 
 ## Unreleased
 
+## 0.1.1 – 2026-11-17
+
+- **Updates built in:** NeedleX looks for new releases and offers them at the top of the menu-bar
+  menu (*⬆︎ Update to NeedleX … and Restart*); *Check for Updates…* looks right away. Updates are
+  signed, and the signature is checked before installing. From 0.1.0, download this release once
+  by hand.
 - **Lock screen clock styles:** System (rounded), Serif, Thin or Monospace (tray → Desktop
   wallpaper → Lock screen clock).
 - **‹ › arrows** on the sides of the open island to step between Player, Weather and Calendar.

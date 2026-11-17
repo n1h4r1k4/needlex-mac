@@ -8,6 +8,7 @@ mod lock;
 mod lyrics;
 mod mac;
 mod media;
+mod update;
 mod weather;
 
 use std::collections::HashMap;
@@ -172,6 +173,8 @@ pub struct AppState {
     pub wall_dirty: AtomicBool,
     /// The clickable parts of the lock-screen view (CSS px in its window).
     pub lock_hit: Mutex<Vec<hover::Rect>>,
+    /// What the updater knows (shown in the tray menu).
+    pub update: update::UpdateState,
     /// Location and forecast for the island's weather page.
     pub weather: weather::WeatherCache,
 }
@@ -563,6 +566,10 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let open_full_item = MenuItemBuilder::with_id("open_full", "Open full screen").build(app)?;
     let recenter = MenuItemBuilder::with_id("recenter", "Re-center notch").build(app)?;
     let quit = MenuItemBuilder::with_id("quit", "Quit NeedleX").accelerator("Cmd+Q").build(app)?;
+    let upd = update::status(app);
+    let busy = matches!(upd, update::Status::Checking | update::Status::Installing(_));
+    let version_line = MenuItemBuilder::with_id("version", update::menu_status(app)).enabled(false).build(app)?;
+    let check_updates = MenuItemBuilder::with_id("update_check", "Check for Updates…").enabled(!busy).build(app)?;
 
     let mut menu = MenuBuilder::new(app);
     // macOS said no to reading a player: offer the way to fix it
@@ -571,6 +578,12 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         let names = denied.iter().map(|d| if d == "Music" { "Apple Music" } else { d.as_str() }).collect::<Vec<_>>().join(" and ");
         let fix = MenuItemBuilder::with_id("perm_automation", format!("⚠︎ Allow NeedleX to control {names}…")).build(app)?;
         menu = menu.item(&fix).separator();
+    }
+    // a newer version is out: offer it first
+    if let update::Status::Available(v) | update::Status::Installing(v) = &upd {
+        let label = if busy { format!("Installing NeedleX {v}…") } else { format!("⬆︎ Update to NeedleX {v} and Restart") };
+        let it = MenuItemBuilder::with_id("update_install", label).enabled(!busy).build(app)?;
+        menu = menu.item(&it).separator();
     }
     let menu = menu
         .items(&[&hide_notch, &recenter, &open_full_item])
@@ -584,6 +597,8 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         .items(&[&floating, &hide, &glow, &vis, &glass])
         .separator()
         .item(&auto)
+        .separator()
+        .items(&[&version_line, &check_updates])
         .separator()
         .item(&quit)
         .build()?;
@@ -610,6 +625,8 @@ fn on_menu(app: &AppHandle, id: &str) {
     let item = state.tray_items.lock().unwrap().get(id).cloned();
     match id {
         "quit" => app.exit(0),
+        "update_check" => update::check_now(app),
+        "update_install" => update::install(app),
         "open_full" => show_full(app, false),
         "recenter" => {
             update_setting(app, |s| s.notch_offset = 0.0);
@@ -757,6 +774,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             media_control,
             media_seek,
@@ -801,6 +819,7 @@ fn main() {
                 wall_dirty: AtomicBool::new(true),
                 lock_hit: Mutex::new(Vec::new()),
                 weather: Default::default(),
+                update: Default::default(),
             });
             // menu-bar app: no Dock icon, no app menu
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -873,6 +892,7 @@ fn main() {
                     close_full(h.clone());
                 });
             }
+            update::spawn(handle.clone());
             idle::spawn(handle);
             Ok(())
         })

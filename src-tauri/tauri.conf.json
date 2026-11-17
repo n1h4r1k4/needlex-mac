@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "NeedleX",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.needlex.island",
   "build": {
     "frontendDist": "../src"
@@ -56,5 +56,13 @@
     "externalBin": [
       "binaries/needlex-helper"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDJCNTlDMzZGRURBMzIyMTYKUldRV0lxUHRiOE5aSzFqRmZnTXlnejlkL3BvSHVUR3ViVngrc3lVTkFCS25HS2VxaWtGWDZva0IK",
+      "endpoints": [
+        "https://github.com/n1h4r1k4/needlex-mac/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

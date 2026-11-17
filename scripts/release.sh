@@ -51,6 +51,34 @@ DMG="$DIST/$APP_NAME-$VERSION.dmg"
 ZIP="$DIST/$APP_NAME-$VERSION.zip"
 hdiutil create -volname "$APP_NAME $VERSION" -srcfolder "$STAGE" -fs HFS+ -format UDZO -ov "$DMG" >/dev/null
 ditto -c -k --keepParent "$APP" "$ZIP"
-(cd "$DIST" && shasum -a 256 "$(basename "$DMG")" "$(basename "$ZIP")" > SHA256SUMS.txt)
+
+# For the in-app updater: the app as a .tar.gz (NeedleX.app at its top, no
+# AppleDouble files), its signature, and latest.json, which the app downloads
+# from the latest release to see if there is a newer version. Signing needs the
+# updater key (TAURI_SIGNING_PRIVATE_KEY and _PASSWORD; a GitHub secret in CI).
+TGZ="$DIST/$APP_NAME-$VERSION.app.tar.gz"
+COPYFILE_DISABLE=1 tar -czf "$TGZ" -C "$(dirname "$APP")" "$APP_NAME.app"
+if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+  npx tauri signer sign "$TGZ" >/dev/null
+  REPO="${GITHUB_REPOSITORY:-n1h4r1k4/needlex-mac}"
+  awk -v v="$VERSION" '$0 ~ "^## " v "( |$)" {on=1; next} /^## / {on=0} on' CHANGELOG.md > "$STAGE/notes.md"
+  node -e '
+    const fs = require("fs");
+    const [version, url, sig, notes, out] = process.argv.slice(1);
+    const p = { signature: fs.readFileSync(sig, "utf8").trim(), url };
+    fs.writeFileSync(out, JSON.stringify({
+      version,
+      notes: fs.readFileSync(notes, "utf8").trim(),
+      pub_date: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
+      // one universal app for both kinds of Mac
+      platforms: { "darwin-aarch64": p, "darwin-x86_64": p },
+    }, null, 2) + "\n");
+  ' "$VERSION" "https://github.com/$REPO/releases/download/v$VERSION/$(basename "$TGZ")" \
+    "$TGZ.sig" "$STAGE/notes.md" "$DIST/latest.json"
+else
+  echo "no TAURI_SIGNING_PRIVATE_KEY: not signing the update, so no latest.json"
+  rm "$TGZ"
+fi
+(cd "$DIST" && shasum -a 256 $(ls *.dmg *.zip *.tar.gz 2>/dev/null) > SHA256SUMS.txt)
 ls -lh "$DIST"
 cat "$DIST/SHA256SUMS.txt"

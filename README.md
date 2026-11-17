@@ -215,8 +215,21 @@ open /Applications/NeedleX.app
 
 NeedleX is a menu-bar app: it has no Dock icon, and everything is in its tray menu at the top right.
 
-To update, download the new release (or run `git pull` and `npm run build` again) and replace the
-app in Applications. To uninstall, quit it from the tray, then delete `/Applications/NeedleX.app`, `~/Library/Application Support/com.needlex.island`
+### Updating
+
+From version 0.1.1 on, NeedleX updates itself. It looks for a new release now and then, and when
+there is one the menu-bar menu shows **⬆︎ Update to NeedleX … and Restart** at the top. *Check for
+Updates…* in the menu looks right away. Each update's signature is checked before it is installed.
+Because NeedleX isn't notarized, macOS may ask for its permissions (such as controlling Spotify)
+again after an update.
+
+Coming from **0.1.0**? It can't update itself yet: download the
+[latest release](https://github.com/n1h4r1k4/needlex-mac/releases/latest) once and replace the app
+in Applications. If you build NeedleX yourself, run `git pull` and `npm run build` again instead.
+
+### Uninstall
+
+To uninstall, quit it from the tray, then delete `/Applications/NeedleX.app`, `~/Library/Application Support/com.needlex.island`
 and `~/Library/Caches/com.needlex.island`.
 
 ## Using NeedleX
@@ -237,6 +250,7 @@ Everything is in the tray menu:
 | Desktop wallpaper | Off / Lyrics / Turntable / Record sleeve / Cover with aura, *Also on the lock screen* and *Lock screen clock* (System / Serif / Thin / Monospace) |
 | Lyrics effect | Pick the effect, its *Background* and *Show album cover* |
 | Open full screen · Re-center notch · Launch at login · Quit | |
+| Check for Updates… | Look for a new version now (the line above it shows your version) |
 
 ## Permissions and privacy
 
@@ -257,6 +271,8 @@ NeedleX contacts these services:
 - **iTunes Search / Deezer** for high-resolution covers. It sends the title, artist and album.
 - **[Open-Meteo](https://open-meteo.com)** for the weather. It sends coordinates rounded to about 1 km.
 - **Apple's geocoder** for the name of your town. It sends coordinates.
+- **GitHub** for updates. A few times a day it downloads `latest.json` from this project's latest
+  release. Nothing about you or your music is sent.
 
 ## Troubleshooting
 
@@ -339,6 +355,7 @@ src-tauri/
   src/lyrics.rs          LRCLIB search and LRC parser
   src/lock.rs mac.rs     lock screen, AppKit / CoreGraphics glue
   src/location.rs weather.rs   location and weather
+  src/update.rs          updates from the GitHub releases
   helper/helper.swift    the Swift companion
 scripts/                 signing and screenshot scripts
 docs/images/             README screenshots

@@ -10,4 +10,8 @@
 4. NeedleX lives in the menu bar (no Dock icon). Play something in Spotify or Music and allow
    NeedleX to control it when macOS asks.
 
-`SHA256SUMS.txt` lists the checksums of the files.
+Already have NeedleX 0.1.1 or later? It offers this update in its menu-bar menu (or choose
+**Check for Updates…**), so there is nothing to download by hand.
+
+`SHA256SUMS.txt` lists the checksums of the files. The `.app.tar.gz` and `latest.json` are for the
+in-app updater.
